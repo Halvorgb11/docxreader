@@ -44,7 +44,7 @@ LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx
 2. [x] `read_pdf`-verktøy (senere fjernet til fordel for `.docx`).
 3. [x] Agent i `agent.py` med `create_agent` + Claude, kjørbar fra kommandolinjen.
 4. [x] `read_docx`-verktøy (python-docx): overskrifter, avsnitt og tabeller som markdown-lignende tekst. Test-.docx i `samples/`, tester.
-5. [~] Koble `read_docx` til agenten – `tools=[read_docx]` er satt, ikke prøvd mot Claude ennå.
+5. [x] Koble `read_docx` til agenten – testet mot Claude (tabell, lister og overskrifter leses riktig).
 6. [ ] Senere: lese én seksjon, søk i dokument, liste dokumenter i en mappe, kommentarer/sporede endringer.
 
 ## Konvensjoner
