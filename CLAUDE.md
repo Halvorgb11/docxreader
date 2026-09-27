@@ -44,7 +44,7 @@ LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx
 1. [x] Oppsett: uv-prosjekt, avhengigheter.
 2. [x] `read_pdf`-verktøy i `tools.py`, testet uten agent.
 3. [x] Agent i `agent.py` med `create_agent` + Claude, kjørbar fra kommandolinjen.
-4. [~] `read_docx`-verktøy (python-docx) – avhengighet og test-.docx er klare, verktøyet gjenstår: overskrifter, avsnitt og tabeller som markdown-lignende tekst. Test-.docx i `samples/`, tester.
+4. [x] `read_docx`-verktøy (python-docx): overskrifter, avsnitt og tabeller som markdown-lignende tekst. Test-.docx i `samples/`, tester.
 5. [ ] Koble `read_docx` til agenten.
 6. [ ] Senere: lese én seksjon, søk i dokument, liste dokumenter i en mappe, kommentarer/sporede endringer.
 
@@ -55,7 +55,9 @@ LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx
 - Verktøy testes med `tool.invoke({...})` i `tests/`, uten å kalle Claude.
 - Modell settes i `agent.py` som `MODEL = "anthropic:claude-sonnet-5"` (streng-format `leverandør:modell`).
 - .docx har ingen sider; struktur hentes fra avsnittsstiler (`Title`, `Heading N`, `List Bullet`, `List Number`) og gjøres om til markdown.
-- Fallgruve: `doc.paragraphs` og `doc.tables` er separate lister. For riktig rekkefølge må brødteksten (`doc.element.body`) gås gjennom i rekkefølge.
+- Fallgruve: `doc.paragraphs` og `doc.tables` er separate lister. Bruk `doc.iter_inner_content()` for avsnitt og tabeller i riktig rekkefølge.
+- `read_docx`-format: topp-/bunntekst øverst, `Title` → `#`, `Heading N` → N+1 `#`, lister → `-`/`1.`, tabeller → markdown-tabeller (første rad = overskrift). Hjelpefunksjoner `_paragraph_to_markdown`, `_table_to_markdown`.
+- Ødelagt .docx gir `PackageNotFoundError` fra python-docx; fanges og gjøres om til `Feil:`-tekst.
 - `samples/rapport.pdf` er en 2-siders test-PDF laget med macOS `cupsfilter`.
 
 ## Beslutninger
