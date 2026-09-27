@@ -4,9 +4,12 @@ from pathlib import Path
 
 from docx import Document
 
-from docxreader.tools import read_docx
+from docxreader import tools
+from docxreader.tools import docx_outline, read_docx, read_docx_section
 
-SAMPLE_DOCX = Path(__file__).parent.parent / "samples" / "prosjektplan.docx"
+SAMPLES = Path(__file__).parent.parent / "samples"
+SAMPLE_DOCX = SAMPLES / "prosjektplan.docx"
+LARGE_DOCX = SAMPLES / "arsrapport.docx"
 
 
 def test_docx_tool_metadata():
@@ -94,3 +97,112 @@ def test_docx_corrupt_file_returns_error_text(tmp_path):
     result = read_docx.invoke({"path": str(bad)})
     assert result.startswith("Feil:")
     assert "ikke et gyldig Word-dokument" in result
+
+
+# --- Store dokumenter: innholdsfortegnelse, seksjoner og grense -------------
+
+
+def _chapters_doc(tmp_path) -> str:
+    """Lite dokument med samme underoverskrift ("Status") i to kapitler."""
+    doc = Document()
+    doc.add_heading("Rapport", level=0)
+    for chapter in ["Nord", "Sør"]:
+        doc.add_heading(chapter, level=1)
+        doc.add_paragraph(f"Innledning for {chapter}.")
+        doc.add_heading("Status", level=2)
+        doc.add_paragraph(f"Status i {chapter} er god.")
+    f = tmp_path / "kapitler.docx"
+    doc.save(f)
+    return str(f)
+
+
+def test_outline_lists_headings_with_sizes():
+    result = docx_outline.invoke({"path": str(SAMPLE_DOCX)})
+    assert "## Budsjett  (~33 ord, 1 tabell)" in result
+    assert "### Fase 2: Utvikling" in result
+    # Bare overskrifter – ikke selve teksten.
+    assert "Kari Nordmann" not in result
+
+
+def test_outline_without_headings(tmp_path):
+    doc = Document()
+    doc.add_paragraph("Bare tekst.")
+    f = tmp_path / "flat.docx"
+    doc.save(f)
+    assert "ingen overskrifter" in docx_outline.invoke({"path": str(f)})
+
+
+def test_section_includes_content_until_next_heading():
+    result = read_docx_section.invoke({"path": str(SAMPLE_DOCX), "heading": "Budsjett"})
+    assert result.startswith("## Budsjett")
+    assert "| Utvikling | 850 000 | Kari Nordmann |" in result
+    assert "Totalt budsjett" in result
+    assert "Fremdrift" not in result
+
+
+def test_section_includes_subsections():
+    result = read_docx_section.invoke({"path": str(SAMPLE_DOCX), "heading": "Fremdrift"})
+    assert "### Fase 1: Design" in result
+    assert "3. Test med ekte kunder" in result
+
+
+def test_section_case_insensitive_and_partial_match():
+    result = read_docx_section.invoke({"path": str(SAMPLE_DOCX), "heading": "fase 2"})
+    assert result.startswith("### Fase 2: Utvikling")
+
+
+def test_section_not_found_lists_available_headings():
+    result = read_docx_section.invoke({"path": str(SAMPLE_DOCX), "heading": "Lønn"})
+    assert result.startswith("Feil:")
+    assert "Fremdrift > Fase 1: Design" in result
+
+
+def test_section_ambiguous_heading_asks_for_path(tmp_path):
+    result = read_docx_section.invoke({"path": _chapters_doc(tmp_path), "heading": "Status"})
+    assert result.startswith("Feil:")
+    assert "Nord > Status" in result and "Sør > Status" in result
+
+
+def test_section_path_picks_the_right_one(tmp_path):
+    result = read_docx_section.invoke({"path": _chapters_doc(tmp_path), "heading": "Sør > Status"})
+    assert "Status i Sør er god." in result
+    assert "Nord" not in result
+
+
+def test_section_missing_file_returns_error_text():
+    result = read_docx_section.invoke({"path": "finnes_ikke.docx", "heading": "x"})
+    assert result.startswith("Feil:")
+
+
+def test_read_docx_returns_outline_when_too_large(tmp_path, monkeypatch):
+    # monkeypatch endrer MAX_WORDS bare under denne testen.
+    monkeypatch.setattr(tools, "MAX_WORDS", 10)
+    result = read_docx.invoke({"path": _chapters_doc(tmp_path)})
+    assert "Dokumentet er stort" in result
+    assert "read_docx_section" in result
+    assert "### Status" in result
+    assert "er god" not in result  # selve teksten skal ikke være med
+
+
+def test_large_section_returns_sub_outline(tmp_path, monkeypatch):
+    monkeypatch.setattr(tools, "MAX_WORDS", 5)
+    result = read_docx_section.invoke({"path": _chapters_doc(tmp_path), "heading": "Nord"})
+    assert "er stor" in result
+    assert "### Status" in result
+    assert "er god" not in result
+
+
+def test_large_sample_read_docx_gives_outline():
+    result = read_docx.invoke({"path": str(LARGE_DOCX)})
+    assert result.startswith("Dokumentet er stort")
+    assert "## Region Nord" in result
+    assert len(result) < 3000  # mye mindre enn hele dokumentet
+
+
+def test_large_sample_planted_facts_are_reachable():
+    status = read_docx_section.invoke({"path": str(LARGE_DOCX), "heading": "Region Nord > Status"})
+    assert "Ingrid Solberg" in status
+    it = read_docx_section.invoke({"path": str(LARGE_DOCX), "heading": "IT og sikkerhet > Utfordringer"})
+    assert "3 alvorlige sikkerhetshendelser" in it
+    tall = read_docx_section.invoke({"path": str(LARGE_DOCX), "heading": "Økonomi > Nøkkeltall"})
+    assert "| Driftsresultat | 31,2 MNOK | 38,5 MNOK |" in tall

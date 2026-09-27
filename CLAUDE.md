@@ -21,9 +21,9 @@ LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx
 ## Mappestruktur
 - `CLAUDE.md` – denne filen, prosjektkontekst for Claude.
 - `pyproject.toml` / `uv.lock` / `.python-version` – Python-prosjektet.
-- `src/docxreader/` – pakken. `tools.py` = `@tool`-funksjoner (ren Python, testbar uten Claude), `agent.py` = Claude + `create_agent` (`build_agent()`, `ask()`), `__init__.py` = CLI (`main`, `print_messages`).
-- `tests/` – pytest-tester. `samples/` – testfiler (`prosjektplan.docx`).
-- `scripts/make_sample_docx.py` – lager `samples/prosjektplan.docx` på nytt.
+- `src/docxreader/` – pakken. `tools.py` = `@tool`-funksjoner `read_docx`, `docx_outline`, `read_docx_section` (ren Python, testbar uten Claude), `agent.py` = Claude + `create_agent` (`build_agent()`, `ask()`), `__init__.py` = CLI (`main`, `print_messages`).
+- `tests/` – pytest-tester. `samples/` – testfiler (`prosjektplan.docx` lite, `arsrapport.docx` ~8000 ord med plantede fakta).
+- `scripts/make_sample_docx.py` / `scripts/make_large_sample_docx.py` – lager testfilene på nytt.
 - `.env.example` – mal for `.env` (API-nøkkel).
 - `.claude/skills/` – prosjektspesifikke skills. Hver skill ligger i egen mappe med en `SKILL.md`. Egne skills legges direkte her.
 - `.agents/skills/` – skills installert med `npx skills` (felles for flere AI-agenter). Symlenket inn i `.claude/skills/`.
@@ -45,7 +45,8 @@ LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx
 3. [x] Agent i `agent.py` med `create_agent` + Claude, kjørbar fra kommandolinjen.
 4. [x] `read_docx`-verktøy (python-docx): overskrifter, avsnitt og tabeller som markdown-lignende tekst. Test-.docx i `samples/`, tester.
 5. [x] Koble `read_docx` til agenten – testet mot Claude (tabell, lister og overskrifter leses riktig).
-6. [ ] Senere: lese én seksjon, søk i dokument, liste dokumenter i en mappe, kommentarer/sporede endringer.
+6. [x] Store filer: `docx_outline` + `read_docx_section` + grense (`MAX_WORDS`) i `read_docx`.
+7. [ ] Ideer: søk i dokument (`search_docx`), samtaleminne (checkpointer) + `ContextEditingMiddleware`, liste dokumenter i en mappe, kommentarer/sporede endringer, RAG ved mange dokumenter.
 
 ## Konvensjoner
 - Verktøy defineres med `@tool(parse_docstring=True)` og Google-stil docstring (`Args:`), slik at argumentbeskrivelsene havner i skjemaet modellen ser.
@@ -55,6 +56,11 @@ LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx
 - .docx har ingen sider; struktur hentes fra avsnittsstiler (`Title`, `Heading N`, `List Bullet`, `List Number`) og gjøres om til markdown.
 - Fallgruve: `doc.paragraphs` og `doc.tables` er separate lister. Bruk `doc.iter_inner_content()` for avsnitt og tabeller i riktig rekkefølge.
 - `read_docx`-format: topp-/bunntekst øverst, `Title` → `#`, `Heading N` → N+1 `#`, lister → `-`/`1.`, tabeller → markdown-tabeller (første rad = overskrift). Hjelpefunksjoner `_paragraph_to_markdown`, `_table_to_markdown`.
+- Alle docx-verktøy bygger på `_load_docx()` → liste av `_Block` (markdown, ord, `heading_level`, `is_table`). `heading_level`: 1 = Title, 2 = Heading 1 osv.
+- Seksjon = overskrift + alt fram til neste overskrift på samme eller høyere nivå (`_section_end`).
+- `read_docx_section` tar overskrift eller sti med ` > ` (f.eks. `"Økonomi > Status"`); eksakt treff før delvis, uavhengig av store/små bokstaver. Tvetydig eller ukjent overskrift → `Feil:` med liste over alternativer.
+- `MAX_WORDS = 3000`: over dette gir `read_docx` innholdsfortegnelsen, og `read_docx_section` gir underoverskriftene. Tester endrer den med `monkeypatch`.
+- Interne feil kastes som `_DocxError` og gjøres om til `Feil: …` i verktøyene.
 - Ødelagt .docx gir `PackageNotFoundError` fra python-docx; fanges og gjøres om til `Feil:`-tekst.
 
 ## Beslutninger
