@@ -1,7 +1,7 @@
 # docxreader
 
 ## Om prosjektet
-Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at agenten skal kunne lese PDF-filer. Flere filtyper, for eksempel .docx, kan komme senere. Detaljer fylles inn etter hvert.
+LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx). Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser PDF direkte, men ikke .docx. `read_pdf` finnes fra før og beholdes.
 
 ## Arbeidsregler for Claude
 - **Hold denne filen oppdatert.** Når noe viktig bestemmes eller endres (formål, stack, mappestruktur, kommandoer, konvensjoner, kjente fallgruver), oppdater relevant seksjon her i samme arbeidsøkt.
@@ -15,6 +15,7 @@ Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at 
 - `langchain` 1.x (`create_agent`, `@tool` fra `langchain_core.tools`).
 - `langchain-anthropic` – Claude API som modell.
 - `pypdf` – lesing av PDF (ren Python).
+- `python-docx` – lesing av .docx (importeres som `import docx`).
 - `python-dotenv` – leser `ANTHROPIC_API_KEY` fra `.env`.
 - `pytest` (dev) – tester.
 
@@ -22,7 +23,8 @@ Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at 
 - `CLAUDE.md` – denne filen, prosjektkontekst for Claude.
 - `pyproject.toml` / `uv.lock` / `.python-version` – Python-prosjektet.
 - `src/docxreader/` – pakken. `tools.py` = `@tool`-funksjoner (ren Python, testbar uten Claude), `agent.py` = Claude + `create_agent` (`build_agent()`, `ask()`), `__init__.py` = CLI (`main`, `print_messages`).
-- `tests/` – pytest-tester. `samples/` – test-PDF-er.
+- `tests/` – pytest-tester. `samples/` – testfiler (`rapport.pdf`, `prosjektplan.docx`).
+- `scripts/make_sample_docx.py` – lager `samples/prosjektplan.docx` på nytt.
 - `.env.example` – mal for `.env` (API-nøkkel).
 - `.claude/skills/` – prosjektspesifikke skills. Hver skill ligger i egen mappe med en `SKILL.md`. Egne skills legges direkte her.
 - `.agents/skills/` – skills installert med `npx skills` (felles for flere AI-agenter). Symlenket inn i `.claude/skills/`.
@@ -42,7 +44,9 @@ Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at 
 1. [x] Oppsett: uv-prosjekt, avhengigheter.
 2. [x] `read_pdf`-verktøy i `tools.py`, testet uten agent.
 3. [x] Agent i `agent.py` med `create_agent` + Claude, kjørbar fra kommandolinjen.
-4. [ ] Forbedringer: sidevalg, store PDF-er, gode feilmeldinger til modellen, senere `.docx`.
+4. [~] `read_docx`-verktøy (python-docx) – avhengighet og test-.docx er klare, verktøyet gjenstår: overskrifter, avsnitt og tabeller som markdown-lignende tekst. Test-.docx i `samples/`, tester.
+5. [ ] Koble `read_docx` til agenten.
+6. [ ] Senere: lese én seksjon, søk i dokument, liste dokumenter i en mappe, kommentarer/sporede endringer.
 
 ## Konvensjoner
 - Verktøy defineres med `@tool(parse_docstring=True)` og Google-stil docstring (`Args:`), slik at argumentbeskrivelsene havner i skjemaet modellen ser.
@@ -50,6 +54,8 @@ Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at 
 - `read_pdf` markerer sider som `--- Side N av M ---`, så modellen kan vise til sidenummer.
 - Verktøy testes med `tool.invoke({...})` i `tests/`, uten å kalle Claude.
 - Modell settes i `agent.py` som `MODEL = "anthropic:claude-sonnet-5"` (streng-format `leverandør:modell`).
+- .docx har ingen sider; struktur hentes fra avsnittsstiler (`Title`, `Heading N`, `List Bullet`, `List Number`) og gjøres om til markdown.
+- Fallgruve: `doc.paragraphs` og `doc.tables` er separate lister. For riktig rekkefølge må brødteksten (`doc.element.body`) gås gjennom i rekkefølge.
 - `samples/rapport.pdf` er en 2-siders test-PDF laget med macOS `cupsfilter`.
 
 ## Beslutninger
