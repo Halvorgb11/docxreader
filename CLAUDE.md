@@ -21,7 +21,7 @@ Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at 
 ## Mappestruktur
 - `CLAUDE.md` – denne filen, prosjektkontekst for Claude.
 - `pyproject.toml` / `uv.lock` / `.python-version` – Python-prosjektet.
-- `src/docxreader/` – pakken. `tools.py` = `@tool`-funksjoner (ren Python, testbar uten Claude), `agent.py` = Claude + `create_agent`.
+- `src/docxreader/` – pakken. `tools.py` = `@tool`-funksjoner (ren Python, testbar uten Claude), `agent.py` = Claude + `create_agent` (`build_agent()`, `ask()`), `__init__.py` = CLI (`main`, `print_messages`).
 - `tests/` – pytest-tester. `samples/` – test-PDF-er.
 - `.env.example` – mal for `.env` (API-nøkkel).
 - `.claude/skills/` – prosjektspesifikke skills. Hver skill ligger i egen mappe med en `SKILL.md`. Egne skills legges direkte her.
@@ -31,6 +31,7 @@ Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at 
 
 ## Kommandoer
 - `uv sync` – installer avhengigheter. `uv add <pakke>` – legg til avhengighet.
+- `uv run docxreader "spørsmål"` – kjør agenten (krever `.env`). Skriver ut hvert steg i agentløkken.
 - `uv run pytest` – kjør tester. `uv run python ...` – kjør kode i prosjektets miljø.
 - Repo: https://github.com/Halvorgb11/docxreader (privat, branch `main`). Commit og push med vanlig `git`.
 - Node.js er installert via nvm (v24 LTS). I nye skall: `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"` hvis `node` ikke finnes.
@@ -40,7 +41,7 @@ Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at 
 ## Plan og fremdrift
 1. [x] Oppsett: uv-prosjekt, avhengigheter.
 2. [x] `read_pdf`-verktøy i `tools.py`, testet uten agent.
-3. [ ] Agent i `agent.py` med `create_agent` + Claude, kjørbar fra kommandolinjen.
+3. [x] Agent i `agent.py` med `create_agent` + Claude, kjørbar fra kommandolinjen.
 4. [ ] Forbedringer: sidevalg, store PDF-er, gode feilmeldinger til modellen, senere `.docx`.
 
 ## Konvensjoner
@@ -48,6 +49,7 @@ Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at 
 - Verktøy returnerer feil som tekst som begynner med `Feil:` i stedet for å kaste unntak, så modellen kan forstå og håndtere feilen.
 - `read_pdf` markerer sider som `--- Side N av M ---`, så modellen kan vise til sidenummer.
 - Verktøy testes med `tool.invoke({...})` i `tests/`, uten å kalle Claude.
+- Modell settes i `agent.py` som `MODEL = "anthropic:claude-sonnet-5"` (streng-format `leverandør:modell`).
 - `samples/rapport.pdf` er en 2-siders test-PDF laget med macOS `cupsfilter`.
 
 ## Beslutninger
