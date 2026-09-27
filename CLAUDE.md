@@ -39,12 +39,16 @@ Et LangChain-verktøy (`@tool`) som lar en agent lese filer. Første mål er at 
 
 ## Plan og fremdrift
 1. [x] Oppsett: uv-prosjekt, avhengigheter.
-2. [ ] `read_pdf`-verktøy i `tools.py`, testet uten agent.
+2. [x] `read_pdf`-verktøy i `tools.py`, testet uten agent.
 3. [ ] Agent i `agent.py` med `create_agent` + Claude, kjørbar fra kommandolinjen.
 4. [ ] Forbedringer: sidevalg, store PDF-er, gode feilmeldinger til modellen, senere `.docx`.
 
 ## Konvensjoner
-_Ingen ennå._
+- Verktøy defineres med `@tool(parse_docstring=True)` og Google-stil docstring (`Args:`), slik at argumentbeskrivelsene havner i skjemaet modellen ser.
+- Verktøy returnerer feil som tekst som begynner med `Feil:` i stedet for å kaste unntak, så modellen kan forstå og håndtere feilen.
+- `read_pdf` markerer sider som `--- Side N av M ---`, så modellen kan vise til sidenummer.
+- Verktøy testes med `tool.invoke({...})` i `tests/`, uten å kalle Claude.
+- `samples/rapport.pdf` er en 2-siders test-PDF laget med macOS `cupsfilter`.
 
 ## Beslutninger
 - 2026-09-27: Prosjektet opprettet med `CLAUDE.md` og `.claude/skills/`.
