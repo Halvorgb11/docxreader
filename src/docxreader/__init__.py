@@ -1,7 +1,7 @@
 """docxreader: la en Claude-agent lese filer via LangChain-verktøy.
 
 Kjør fra kommandolinjen:
-    uv run docxreader "Hva står det i samples/rapport.pdf?"
+    uv run docxreader "Hva står det i samples/prosjektplan.docx?"
 """
 
 import sys
@@ -27,7 +27,7 @@ def print_messages(messages) -> None:
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print('Bruk: uv run docxreader "spørsmål om en PDF"')
+        print('Bruk: uv run docxreader "spørsmål om et Word-dokument"')
         sys.exit(1)
 
     # Importeres her så `--help`-lignende bruk ikke trenger API-nøkkel.
