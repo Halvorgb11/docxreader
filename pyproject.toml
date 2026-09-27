@@ -1,0 +1,27 @@
+[project]
+name = "docxreader"
+version = "0.1.0"
+description = "LangChain-verktøy som lar en Claude-agent lese PDF-filer"
+readme = "README.md"
+authors = [
+    { name = "Halvor Grefsrød Bolkesjø", email = "223762825+Halvorgb11@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "langchain>=1.0,<2.0",
+    "langchain-anthropic>=1.7.4",
+    "pypdf>=6.19.0",
+    "python-dotenv>=1.2.3",
+]
+
+[project.scripts]
+docxreader = "docxreader:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

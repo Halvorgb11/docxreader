@@ -1,0 +1,10 @@
+# docxreader
+
+LangChain-verktøy (`@tool`) som lar en Claude-agent lese PDF-filer.
+
+## Oppsett
+
+```bash
+uv sync                 # installer avhengigheter i .venv
+cp .env.example .env    # legg inn ANTHROPIC_API_KEY
+```
