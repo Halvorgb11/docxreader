@@ -54,7 +54,8 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - `uv run docxreader "spørsmål"` – ett spørsmål uten minne (krever `.env`). Skriver ut hvert steg i agentløkken.
 - `uv run docxreader` – chat med samtaleminne. `/ny` = ny samtale, `/avslutt` eller Ctrl-D = avslutt.
 - `uv run pytest` – kjør tester. `uv run python ...` – kjør kode i prosjektets miljø.
-- Repo: https://github.com/Halvorgb11/docxreader (privat, branch `main`). Commit og push med vanlig `git`.
+- Repo: https://github.com/Halvorgb11/docxreader (**offentlig**, branch `main`). Commit og push med vanlig `git`. Commit-e-post i dette repoet er GitHubs noreply-adresse (`git config user.email`) – ikke bruk privat e-post.
+- Testdata skal være oppdiktet: bruk «Fjellbekk AS» og domener på `.example`, aldri ekte selskaper eller ekte e-postdomener.
 - Node.js er installert via nvm (v24 LTS). I nye skall: `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"` hvis `node` ikke finnes.
 - GitHub CLI: `~/.local/bin/gh` (v2.101.0, installert uten Homebrew).
 - Legge til skills: `npx skills add <github-repo> --skill '<navn|*>' --yes`
@@ -119,6 +120,7 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - 2026-09-27: Fjernet `read_pdf`, `pypdf` og `samples/rapport.pdf`.
 - 2026-09-28: Flermålsanalyse av filtyper (relevans 40 %, enkelhet 30 %, utvidbarhet 30 %): xlsx 4,4 > pptx 3,7 > csv 3,6 > md/txt 3,3 = e-post 3,3 > json/xml 2,9 > html 2,6 > odt 2,3 > epub/rtf 1,9.
 - 2026-09-28: Laget skillen `.claude/skills/ny-filleser` for å legge til filtyper på en ensartet måte.
+- 2026-09-28: Sikkerhetsgjennomgang av hele git-historikken før publisering: ingen nøkler/tokens/passord, `.env` aldri committet. Historikken skrevet om med `git filter-repo`: privat e-post → noreply (commits og `pyproject.toml`), ekte firmanavn «Fjordkraft» → «Fjellbekk», `fjordkraft.no`/`nordicdata.no` → `.example`, «KIWI Sentrum» → «Butikken Sentrum» (også i zip/e-post/bilde). Verifisert i klon fra GitHub; repoet gjort offentlig med beskrivelse.
 - 2026-09-28: Samtaleminne (InMemorySaver + thread_id) og kontekstrydding; verifisert mot Claude: oppfølgingsspørsmål («den posten») besvart fra minnet uten nytt verktøykall.
 - 2026-09-28: Testet mot 17 ekte .msg-filer (MSGReader, mapi): 15 OK; fant kontaktkort som ble vist som tom e-post → Outlook-elementtyper. 5 filer lagt i `samples/outlook/` som faste tester.
 - 2026-09-28: `pypdf` tilbake (bare sidetelling/utklipp), `view_file(pages=…)`; `calculate` med parenteser.
