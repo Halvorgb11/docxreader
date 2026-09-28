@@ -52,9 +52,21 @@ def _pick_reader(path: str, readers: dict):
     return reader, file
 
 
+def _run(reader, file: Path):
+    """Kjør en leser med et sikkerhetsnett: et uventet unntak (en feil i et
+    bibliotek eller i leseren) blir en DocumentError i stedet for å krasje
+    agenten. Modellen får da en "Feil: …"-tekst den kan forholde seg til."""
+    try:
+        return reader(file)
+    except DocumentError:
+        raise
+    except Exception as e:
+        raise DocumentError(f"uventet feil ved lesing av '{file}' ({type(e).__name__}: {e}).") from e
+
+
 def load_document(path: str) -> tuple[list[Block], str]:
     reader, file = _pick_reader(path, READERS)
-    return reader(file)
+    return _run(reader, file)
 
 
 def load_table(path: str, sheet: str = "") -> Table:
@@ -65,7 +77,7 @@ def load_table(path: str, sheet: str = "") -> Table:
     Tomt `sheet` går bare når filen har ett ark med innhold.
     """
     reader, file = _pick_reader(path, TABLE_READERS)
-    tables = [t for t in reader(file) if t.header]
+    tables = [t for t in _run(reader, file) if t.header]
     if not tables:
         raise DocumentError(f"'{path}' inneholder ingen tabelldata.")
 

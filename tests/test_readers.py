@@ -68,3 +68,18 @@ def test_top_level_heading_wins_when_same_name_is_nested(tmp_path):
     from docxreader.tools import read_section
 
     assert read_section.invoke({"path": str(f), "heading": "Innledning"}) == "## Innledning\n\nØverst."
+
+
+def test_unexpected_reader_crash_becomes_error_text(tmp_path, monkeypatch):
+    # Et verktøy skal aldri krasje agenten – heller ikke ved feil i et bibliotek.
+    from docxreader import readers
+
+    def crash(path):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setitem(readers.READERS, ".md", crash)
+    f = tmp_path / "a.md"
+    f.write_text("hei")
+    result = read_document.invoke({"path": str(f)})
+    assert result.startswith("Feil: uventet feil ved lesing av")
+    assert "UnicodeDecodeError" in result

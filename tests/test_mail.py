@@ -243,3 +243,46 @@ def test_msg_corrupt_file_returns_error_text(tmp_path):
     result = read_document.invoke({"path": str(bad)})
     assert result.startswith("Feil:")
     assert "ikke en gyldig Outlook-fil" in result
+
+
+# Regresjonstester: feil funnet ved å lese ekte Outlook-filer (eksempelfilene
+# til extract-msg; ikke lagt i repoet pga. lisens). De falske objektene
+# etterligner det de ekte filene inneholdt.
+
+
+class _BrokenMsg(SimpleNamespace):
+    @property
+    def to(self):  # som unicode-header.msg: feltet har ødelagt tegnkoding
+        raise UnicodeDecodeError("gb2312", b"\xea", 0, 1, "illegal multibyte sequence")
+
+
+def _recipient(name, address, kind):
+    return SimpleNamespace(name=name, email=address, type=kind)
+
+
+def test_msg_null_characters_are_removed(tmp_path, monkeypatch):
+    fake = _fake_msg(subject="Test\x00\x00\x00", body="Tekst.\r\n\x00\x00\x00")
+    result = _load_fake(tmp_path, monkeypatch, fake)
+    assert "\x00" not in result
+    assert "Emne: Test\n" in result
+
+
+def test_msg_recipients_come_from_recipient_list(tmp_path, monkeypatch):
+    from extract_msg.enums import RecipientType
+
+    fake = _fake_msg()
+    fake.recipients = [
+        _recipient("Alice\x00", "alice@x.no\x00", RecipientType.TO),
+        _recipient("Dave", "dave@x.no", RecipientType.CC),
+        _recipient("Carol", "carol@x.no", RecipientType.TO),
+        _recipient("Alice", "alice@x.no", RecipientType.TO),  # duplikat
+    ]
+    result = _load_fake(tmp_path, monkeypatch, fake)
+    assert "Til: Alice <alice@x.no>, Carol <carol@x.no>\nKopi: Dave <dave@x.no>" in result
+
+
+def test_msg_field_that_cannot_be_decoded_does_not_crash(tmp_path, monkeypatch):
+    fake = _BrokenMsg(**{k: v for k, v in vars(_fake_msg()).items() if k != "to"})
+    result = _load_fake(tmp_path, monkeypatch, fake)
+    assert result.startswith("E-post\nFra: Kari <kari@x.no>\nDato:")  # Til mangler, resten er med
+    assert "Velkommen." in result

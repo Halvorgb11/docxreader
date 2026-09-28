@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 import extract_msg
-from extract_msg.enums import AttachmentType
+from extract_msg.enums import AttachmentType, RecipientType
 from extract_msg.exceptions import ExMsgBaseException
 
 from docxreader.blocks import Block, DocumentError, count_words, heading, shift_headings
@@ -122,20 +122,52 @@ def load_eml(path: Path) -> tuple[list[Block], str]:
 # --- .msg (Outlook) --------------------------------------------------------
 
 
+def _clean(value) -> str:
+    """Outlook-tekst fylles ofte med null-tegn (\x00) til slutt; fjern dem."""
+    return str(value or "").replace("\x00", "").strip()
+
+
+def _field(obj, name: str, default=None):
+    """Les ett felt uten å krasje. extract-msg dekoder feltene først når de
+    leses, og ett felt med ødelagt tegnkoding skal ikke ødelegge resten."""
+    try:
+        return getattr(obj, name, default)
+    except Exception:
+        return default
+
+
+def _recipients(msg, kind: RecipientType) -> str:
+    """Mottakere av én type (Til, Kopi) fra mottakerlisten. (msg.to er ikke
+    alltid komplett.) Faller tilbake på msg.to/msg.cc hvis listen mangler."""
+    people = []
+    for recipient in _field(msg, "recipients", None) or []:
+        if _field(recipient, "type") != kind:
+            continue
+        name, address = _clean(_field(recipient, "name")), _clean(_field(recipient, "email"))
+        person = f"{name} <{address}>" if name and address and name != address else (name or address)
+        if person and person not in people:
+            people.append(person)
+    if people:
+        return ", ".join(people)
+    return _clean(_field(msg, "to" if kind == RecipientType.TO else "cc"))
+
+
 def _mail_from_msg(msg) -> Mail:
-    """Outlook-melding (fra extract-msg) -> Mail. getattr med standardverdi,
-    fordi .msg-filer også kan være kalenderinvitasjoner o.l. uten alle feltene."""
-    text = getattr(msg, "body", None) or ""
-    if not text.strip() and getattr(msg, "htmlBody", None):
-        text = html_to_text(msg.htmlBody.decode("utf-8", errors="replace"))
+    """Outlook-melding (fra extract-msg) -> Mail. Alle felt leses med _field,
+    fordi .msg-filer også kan være kalenderinvitasjoner o.l. uten alle feltene,
+    og fordi enkeltfelt kan ha ødelagt tegnkoding."""
+    text = _clean(_field(msg, "body"))
+    html = _field(msg, "htmlBody")
+    if not text and html:
+        text = html_to_text(html.decode("utf-8", errors="replace").replace("\x00", ""))
 
     attachments = []
-    for number, att in enumerate(getattr(msg, "attachments", []) or [], start=1):
+    for number, att in enumerate(_field(msg, "attachments", []) or [], start=1):
         mimetype = getattr(att, "mimetype", "") or ""
         if getattr(att, "hidden", False) or (getattr(att, "contentId", None) and mimetype.startswith("image/")):
             continue  # innebygde bilder
-        name = _safe_name(getattr(att, "longFilename", None) or getattr(att, "shortFilename", None)
-                          or getattr(att, "name", None), mimetype, number)
+        name = _safe_name(_clean(getattr(att, "longFilename", None) or getattr(att, "shortFilename", None)
+                                 or getattr(att, "name", None)), mimetype, number)
         kind = getattr(att, "type", None)
         if kind == AttachmentType.MSG:
             attachments.append(Attachment(name if name.endswith(".msg") else name + ".msg", mail=_mail_from_msg(att.data)))
@@ -145,11 +177,11 @@ def _mail_from_msg(msg) -> Mail:
             attachments.append(Attachment(name, note="vedleggstypen kan ikke leses"))
 
     return Mail(
-        sender=getattr(msg, "sender", "") or "",
-        to=getattr(msg, "to", "") or "",
-        cc=getattr(msg, "cc", "") or "",
-        date=_format_date(getattr(msg, "date", None)),
-        subject=getattr(msg, "subject", "") or "",
+        sender=_clean(_field(msg, "sender")),
+        to=_recipients(msg, RecipientType.TO),
+        cc=_recipients(msg, RecipientType.CC),
+        date=_format_date(_field(msg, "date")),
+        subject=_clean(_field(msg, "subject")),
         text=text,
         attachments=attachments,
     )
