@@ -22,6 +22,7 @@ mange nesten like verktøy, og en ny filtype trenger ingen nye verktøy.
 - read_section     – én seksjon, valgt med overskriften
 - search_document  – finn setninger, listepunkter og tabellrader som inneholder søkeord
 - query_table      – filtrer, sorter, tell og summer rader i regneark og CSV
+- view_file        – send en PDF eller et bilde rett til modellen (den leser/ser selv)
 """
 
 from typing import Literal
@@ -37,7 +38,7 @@ from docxreader.blocks import (
     search_units,
     section_end,
 )
-from docxreader.readers import load_document, load_table
+from docxreader.readers import load_document, load_media, load_table
 from docxreader.tables import query
 
 # Dokumenter (og seksjoner) over dette antallet ord sendes ikke i sin helhet.
@@ -69,7 +70,7 @@ def read_document(path: str) -> str:
     i underseksjoner på 100 rader ("Rad 2–101"). En CSV-fil er én tabell ("Tabell").
     En e-post har Fra/Til/Dato/Emne øverst og seksjonene "Melding", "Tidligere
     melding 1" … (sitert tråd) og "Vedlegg: navn" – vedlegg (Word, Excel osv.)
-    leses med og står under sin egen seksjon.
+    leses med og står under sin egen seksjon. PDF og bilder: bruk view_file.
     For å filtrere, sortere, telle eller summere rader i Excel/CSV: bruk
     query_table i stedet for å lese alle radene.
     Er dokumentet stort, returneres innholdsfortegnelsen i stedet; bruk da
@@ -290,5 +291,31 @@ def query_table(
         return f"Feil: {e}"
 
 
+# Et verktøy kan returnere mer enn tekst: en LISTE med innholdsblokker, der
+# noen er bilder eller filer. LangChain legger listen i ToolMessage, og
+# langchain-anthropic gjør blokkene om til Claudes bilde- og dokumentblokker.
+# Da ser/leser modellen selve filen – vi trenger ingen PDF- eller bildeleser.
+@tool(parse_docstring=True)
+def view_file(path: str, attachment: str = "") -> str | list[dict]:
+    """Se på en PDF eller et bilde: filen sendes direkte til deg, så du kan
+    lese PDF-en (tekst, tabeller, figurer) eller se bildet selv.
+
+    Støttede filtyper: PDF (.pdf) og bilder (.png, .jpg, .jpeg, .gif, .webp,
+    .tif, .tiff, .bmp) – også som vedlegg i en e-post (.eml, .msg) med
+    attachment. Bruk read_document for Word, Excel, PowerPoint og tekst.
+    En PDF koster mange tokens (ca. 1500–3000 per side); bruk den når svaret
+    trolig står i filen.
+
+    Args:
+        path: Filsti til PDF-en eller bildet, eller til e-posten som har det som vedlegg.
+        attachment: Når path er en e-post: navnet på vedlegget, f.eks. "skisse.png" eller "Tilbud 2026-117.eml > kontrakt.pdf".
+    """
+    try:
+        name, block, note = load_media(path, attachment)
+    except DocumentError as e:
+        return f"Feil: {e}"
+    return [{"type": "text", "text": f"Innholdet i '{name}' følger.{note}"}, block]
+
+
 # Alle verktøyene samlet, så agent.py (og tester) kan hente dem på ett sted.
-ALL_TOOLS = [read_document, document_outline, read_section, search_document, query_table]
+ALL_TOOLS = [read_document, document_outline, read_section, search_document, query_table, view_file]

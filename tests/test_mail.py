@@ -80,8 +80,8 @@ def test_eml_section_inside_attachment_by_path():
     assert "30 dager etter levering" in result
 
 
-def test_eml_unreadable_attachment_is_explained():
-    assert "(2 KB; filtypen .png kan ikke leses her)" in _section("skisse.png")
+def test_eml_image_attachment_points_to_view_file():
+    assert 'PDF/bilde – se innholdet med view_file og attachment="skisse.png")' in _section("skisse.png")
 
 
 def test_eml_forwarded_mail_attachment():

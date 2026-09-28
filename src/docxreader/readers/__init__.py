@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 
 from docxreader.blocks import Block, DocumentError
-from docxreader.readers import csvfile, excel, mail, powerpoint, text, word
+from docxreader.readers import csvfile, excel, mail, media, powerpoint, text, word
 from docxreader.tables import Table
 
 READERS = {
@@ -46,9 +46,10 @@ def _pick_reader(path: str, readers: dict):
     reader = readers.get(file.suffix.lower())
     if reader is None:
         supported = ", ".join(readers)
+        hint = " PDF og bilder kan du se med view_file." if file.suffix.lower() in media.MIME_TYPES else ""
         raise DocumentError(
             f"filtypen til '{path}' støttes ikke ({file.suffix or 'ingen filendelse'}). "
-            f"Støttede filtyper: {supported}."
+            f"Støttede filtyper: {supported}.{hint}"
         )
     return reader, file
 
@@ -92,6 +93,25 @@ def _attachment_tables(path: str, attachment: str) -> list[Table]:
             return _run(reader, temp_file)
         except DocumentError as e:
             raise DocumentError(str(e).replace(str(temp_file), found.name)) from e
+
+
+def load_media(path: str, attachment: str = "") -> tuple[str, dict, str]:
+    """En PDF eller et bilde – en fil, eller et vedlegg i en e-post – som
+    (navn, LangChain-innholdsblokk, merknad). Brukes av view_file."""
+    file = Path(path)
+    if not file.is_file():
+        raise DocumentError(f"fant ingen fil på '{path}'.")
+    if attachment:
+        if file.suffix.lower() not in (".eml", ".msg"):
+            raise DocumentError("attachment kan bare brukes når path er en e-post (.eml eller .msg).")
+        found = mail.find_attachment(_run(mail.load_mail, file), attachment, prefer=tuple(media.MIME_TYPES))
+        if found.data is None:
+            raise DocumentError(f"vedlegget '{found.name}' er ikke en fil (les det med read_section).")
+        name, data = found.name, found.data
+    else:
+        name, data = file.name, file.read_bytes()
+    block, note = media.media_block(name, data)
+    return name, block, note
 
 
 def load_table(path: str, sheet: str = "", attachment: str = "") -> Table:

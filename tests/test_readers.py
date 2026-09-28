@@ -3,14 +3,15 @@
 import pytest
 
 from docxreader.readers import READERS, TABLE_READERS
-from docxreader.tools import ALL_TOOLS, query_table, read_document
+from docxreader.tools import ALL_TOOLS, query_table, read_document, view_file
 
-DOCUMENT_TOOLS = [t for t in ALL_TOOLS if t is not query_table]
+# Verktøyene som leser alle filtypene i READERS (query_table og view_file har egne lister).
+DOCUMENT_TOOLS = [t for t in ALL_TOOLS if t not in (query_table, view_file)]
 
 
 def test_tools_have_names_and_argument_descriptions():
     assert [t.name for t in ALL_TOOLS] == [
-        "read_document", "document_outline", "read_section", "search_document", "query_table",
+        "read_document", "document_outline", "read_section", "search_document", "query_table", "view_file",
     ]
     # parse_docstring=True legger Args-beskrivelsen inn i skjemaet modellen ser.
     for t in ALL_TOOLS:

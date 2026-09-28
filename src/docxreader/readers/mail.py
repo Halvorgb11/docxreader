@@ -30,6 +30,7 @@ from extract_msg.exceptions import ExMsgBaseException
 
 from docxreader.blocks import Block, DocumentError, count_words, heading, shift_headings
 from docxreader.readers.htmltext import html_to_text
+from docxreader.readers.media import MIME_TYPES as MEDIA_TYPES
 from docxreader.readers.text import markdown_blocks
 
 SECTION_LEVEL = 2  # "## Melding", "## Vedlegg: x"
@@ -361,6 +362,8 @@ def _attachment_blocks(attachment: Attachment, depth: int) -> list[Block]:
     size = f"{max(1, round(len(data) / 1024))} KB"
     suffix = Path(attachment.name).suffix.lower()
     reader = READERS.get(suffix)
+    if reader is None and suffix in MEDIA_TYPES:
+        return note(f"{size}; PDF/bilde – se innholdet med view_file og attachment=\"{attachment.name}\"")
     if reader is None:
         return note(f"{size}; filtypen {suffix or '(ingen)'} kan ikke leses her")
     if len(data) > MAX_ATTACHMENT_BYTES:

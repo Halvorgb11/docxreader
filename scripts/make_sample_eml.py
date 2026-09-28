@@ -7,13 +7,14 @@ Inneholder det e-postleseren må håndtere:
 - både ren tekst og HTML (leseren skal velge ren tekst)
 - sitert tråd i to nivåer: "Den … skrev:" med ">" foran, og inni den et
   Outlook-hode ("-----Opprinnelig melding-----", "Fra:", "Sendt:")
-- vedlegg: regneark (.xlsx), Word-dokument (.docx), bilde (.png, kan ikke leses),
+- vedlegg: regneark (.xlsx), Word-dokument (.docx), bilde (.png, se med view_file),
   videresendt e-post (message/rfc822) og en innebygd logo som IKKE er et vedlegg
 Plantede fakta:
 - dypt i tråden (Per): møtet er flyttet til torsdag 8. oktober kl. 10 i rom Fjorden
 - i Word-vedlegget: betaling skjer 30 dager etter levering
 - i den videresendte e-posten: tilbudet gjelder til 15. oktober 2026
 - i regnearket: 4 servere à 45 000 kr fra Nordic Data AS
+- i bildet skisse.png: serverne skal stå i rack B3
 """
 
 import io
@@ -23,6 +24,8 @@ from pathlib import Path
 
 from docx import Document
 from openpyxl import Workbook
+
+from make_sample_media import skisse_png  # samme mappe (scripts/)
 
 OUT = Path(__file__).parent.parent / "samples" / "tilbud.eml"
 
@@ -101,7 +104,7 @@ msg.add_attachment(xlsx_bytes(), maintype="application",
                    subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename="tilbud.xlsx")
 msg.add_attachment(docx_bytes(), maintype="application",
                    subtype="vnd.openxmlformats-officedocument.wordprocessingml.document", filename="avtaleutkast.docx")
-msg.add_attachment(b"\x89PNG\r\n\x1a\n" + b"\x00" * 2048, maintype="image", subtype="png", filename="skisse.png")
+msg.add_attachment(skisse_png(), maintype="image", subtype="png", filename="skisse.png")
 msg.add_attachment(forwarded_mail())  # blir message/rfc822
 
 # Faste grenser mellom delene, så filen blir lik hver gang.
