@@ -21,7 +21,7 @@ LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx
 ## Mappestruktur
 - `CLAUDE.md` – denne filen, prosjektkontekst for Claude.
 - `pyproject.toml` / `uv.lock` / `.python-version` – Python-prosjektet.
-- `src/docxreader/` – pakken. `tools.py` = `@tool`-funksjoner `read_docx`, `docx_outline`, `read_docx_section` (ren Python, testbar uten Claude), `agent.py` = Claude + `create_agent` (`build_agent()`, `ask()`), `__init__.py` = CLI (`main`, `print_messages`).
+- `src/docxreader/` – pakken. `tools.py` = `@tool`-funksjoner `read_docx`, `docx_outline`, `read_docx_section`, `search_docx` (ren Python, testbar uten Claude), `agent.py` = Claude + `create_agent` (`build_agent()`, `ask()`), `__init__.py` = CLI (`main`, `print_messages`).
 - `tests/` – pytest-tester. `samples/` – testfiler (`prosjektplan.docx` lite, `arsrapport.docx` ~8000 ord med plantede fakta).
 - `scripts/make_sample_docx.py` / `scripts/make_large_sample_docx.py` – lager testfilene på nytt.
 - `.env.example` – mal for `.env` (API-nøkkel).
@@ -46,7 +46,8 @@ LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx
 4. [x] `read_docx`-verktøy (python-docx): overskrifter, avsnitt og tabeller som markdown-lignende tekst. Test-.docx i `samples/`, tester.
 5. [x] Koble `read_docx` til agenten – testet mot Claude (tabell, lister og overskrifter leses riktig).
 6. [x] Store filer: `docx_outline` + `read_docx_section` + grense (`MAX_WORDS`) i `read_docx`.
-7. [ ] Ideer: søk i dokument (`search_docx`), samtaleminne (checkpointer) + `ContextEditingMiddleware`, liste dokumenter i en mappe, kommentarer/sporede endringer, RAG ved mange dokumenter.
+7. [x] Søk: `search_docx`.
+8. [ ] Ideer: samtaleminne (checkpointer) + `ContextEditingMiddleware`, liste dokumenter i en mappe, kommentarer/sporede endringer, RAG ved mange dokumenter.
 
 ## Konvensjoner
 - Verktøy defineres med `@tool(parse_docstring=True)` og Google-stil docstring (`Args:`), slik at argumentbeskrivelsene havner i skjemaet modellen ser.
@@ -60,6 +61,7 @@ LangChain-verktøy (`@tool`) som lar en Claude-agent lese Word-dokumenter (.docx
 - Seksjon = overskrift + alt fram til neste overskrift på samme eller høyere nivå (`_section_end`).
 - `read_docx_section` tar overskrift eller sti med ` > ` (f.eks. `"Økonomi > Status"`); eksakt treff før delvis, uavhengig av store/små bokstaver. Tvetydig eller ukjent overskrift → `Feil:` med liste over alternativer.
 - `MAX_WORDS = 3000`: over dette gir `read_docx` innholdsfortegnelsen, og `read_docx_section` gir underoverskriftene. Tester endrer den med `monkeypatch`.
+- `search_docx`: alle søkeord (delstrenger, uavhengig av store/små bokstaver) må finnes i samme bit – setning (avsnitt), listepunkt eller tabellrad (`_search_units`). Treff grupperes under `[overskriftssti]` (`_block_paths`; tittelen er ikke med i stien); tabelltreff vises med overskriftsraden. Maks `MAX_SEARCH_HITS = 15`.
 - Interne feil kastes som `_DocxError` og gjøres om til `Feil: …` i verktøyene.
 - Ødelagt .docx gir `PackageNotFoundError` fra python-docx; fanges og gjøres om til `Feil:`-tekst.
 

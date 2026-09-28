@@ -17,8 +17,10 @@ Verktøyene her:
 - read_docx          – hele dokumentet (eller innholdsfortegnelsen hvis det er stort)
 - docx_outline       – bare innholdsfortegnelsen, med størrelse per seksjon
 - read_docx_section  – én seksjon, valgt med overskriften
+- search_docx        – finn setninger, listepunkter og tabellrader som inneholder søkeord
 """
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,6 +33,9 @@ from langchain_core.tools import tool
 # Dokumenter (og seksjoner) over dette antallet ord sendes ikke i sin helhet.
 # ~3000 ord er omtrent 4000–5000 tokens.
 MAX_WORDS = 3000
+
+# search_docx viser høyst så mange treff.
+MAX_SEARCH_HITS = 15
 
 
 # --- Lesing av .docx ------------------------------------------------------
@@ -274,6 +279,35 @@ def _find_section(blocks: list[_Block], heading: str) -> int:
     raise _DocxError(f"fant ingen overskrift som passer '{heading}'. Tilgjengelige:\n{available}")
 
 
+def _block_paths(blocks: list[_Block]) -> list[str]:
+    """For hver blokk: overskriftsstien den står under, f.eks. "Økonomi > Status"."""
+    heading_paths = _heading_paths(blocks)
+    current = "(før første overskrift)"
+    result = []
+    for i in range(len(blocks)):
+        if i in heading_paths:
+            current = " > ".join(heading_paths[i])
+        result.append(current)
+    return result
+
+
+def _search_units(block: _Block) -> tuple[str, list[str]]:
+    """Del en blokk i biter vi søker i, så et treff ikke returnerer et helt avsnitt.
+
+    Returnerer (tekst som vises foran treffene, liste med biter):
+    - tabell:  hver rad; tabellens overskriftsrad vises foran, så tallene gir mening
+    - liste:   hvert listepunkt
+    - avsnitt: hver setning
+    """
+    if block.is_table:
+        lines = block.markdown.splitlines()
+        return "\n".join(lines[:2]), lines[2:]
+    if "\n" in block.markdown:
+        return "", block.markdown.splitlines()
+    # Del etter punktum/utrop/spørsmålstegn etterfulgt av mellomrom.
+    return "", re.split(r"(?<=[.!?])\s+", block.markdown)
+
+
 # --- Verktøyene -----------------------------------------------------------
 
 # parse_docstring=True: LangChain leser "Args:"-seksjonen i docstringen og
@@ -363,3 +397,67 @@ def read_docx_section(path: str, heading: str) -> str:
             + _outline(blocks, start, end)
         )
     return _render(section)
+
+
+@tool(parse_docstring=True)
+def search_docx(path: str, query: str) -> str:
+    """Søk etter ord i et Word-dokument (.docx) og få bare de treffende
+    setningene, listepunktene og tabellradene, med overskriften de står under.
+
+    Alle ordene i søket må finnes i samme setning/rad. Store/små bokstaver
+    spiller ingen rolle, og deler av ord gir treff ("sikkerhet" finner
+    "sikkerhetshendelser"). Bruk dette når du leter etter noe bestemt og ikke
+    vet hvilken seksjon det står i. Les mer sammenheng med read_docx_section.
+
+    Args:
+        path: Filsti til .docx-filen, for eksempel "samples/prosjektplan.docx".
+        query: Ett eller flere søkeord, f.eks. "driftsresultat" eller "kontaktperson nord". Korte ord og ordstammer gir flest treff.
+    """
+    words = query.casefold().split()
+    if not words:
+        return "Feil: søket kan ikke være tomt."
+    try:
+        blocks, _ = _load_docx(path)
+    except _DocxError as e:
+        return f"Feil: {e}"
+
+    # Samle treff: (blokk, overskriftssti, tekst foran treffene, treffende biter).
+    hits = []
+    for block, block_path in zip(blocks, _block_paths(blocks)):
+        prefix, units = _search_units(block)
+        matched = [u for u in units if all(w in u.casefold() for w in words)]
+        if matched:
+            hits.append((block, block_path, prefix, matched))
+
+    total = sum(len(matched) for *_, matched in hits)
+    if total == 0:
+        return (
+            f"Ingen treff for '{query}'. Prøv færre eller kortere ord (en ordstamme "
+            "finner også sammensatte ord), eller se innholdsfortegnelsen med docx_outline."
+        )
+
+    lines = [f"{total} treff for '{query}':"]
+    shown = 0
+    previous_path = None
+    for block, block_path, prefix, matched in hits:
+        if shown >= MAX_SEARCH_HITS:
+            break
+        matched = matched[: MAX_SEARCH_HITS - shown]
+        shown += len(matched)
+        # Treff under samme overskrift grupperes under én [sti]-linje.
+        if block_path != previous_path:
+            lines.append(f"\n[{block_path}]")
+            previous_path = block_path
+        if prefix:  # tabell: overskriftsraden først, så tallene gir mening
+            lines.append(prefix)
+        # Setninger fra vanlige avsnitt får "- " foran. Tabellrader, listepunkter
+        # og overskrifter har allerede sin egen markdown-form.
+        is_plain_paragraph = not (block.is_table or block.heading_level or "\n" in block.markdown)
+        lines.extend(f"- {u}" if is_plain_paragraph else u for u in matched)
+
+    if shown < total:
+        lines.append(
+            f"\nViser {shown} av {total} treff. Gjør søket mer presist (flere ord), "
+            "eller les en seksjon med read_docx_section."
+        )
+    return "\n".join(lines)

@@ -5,7 +5,7 @@ from pathlib import Path
 from docx import Document
 
 from docxreader import tools
-from docxreader.tools import docx_outline, read_docx, read_docx_section
+from docxreader.tools import docx_outline, read_docx, read_docx_section, search_docx
 
 SAMPLES = Path(__file__).parent.parent / "samples"
 SAMPLE_DOCX = SAMPLES / "prosjektplan.docx"
@@ -206,3 +206,67 @@ def test_large_sample_planted_facts_are_reachable():
     assert "3 alvorlige sikkerhetshendelser" in it
     tall = read_docx_section.invoke({"path": str(LARGE_DOCX), "heading": "Økonomi > Nøkkeltall"})
     assert "| Driftsresultat | 31,2 MNOK | 38,5 MNOK |" in tall
+
+
+# --- search_docx -------------------------------------------------------------
+
+
+def _search(path, query) -> str:
+    return search_docx.invoke({"path": str(path), "query": query})
+
+
+def test_search_returns_sentence_with_heading_path():
+    result = _search(LARGE_DOCX, "kontaktperson")
+    assert result.startswith("1 treff")
+    assert "[Region Nord > Status]" in result
+    assert "- Kontaktperson for Region Nord er Ingrid Solberg." in result
+    # Bare setningen, ikke hele avsnittet rundt.
+    assert len(result) < 200
+
+
+def test_search_matches_part_of_word_and_ignores_case():
+    result = _search(LARGE_DOCX, "SIKKERHETSHENDELSE")
+    assert "3 alvorlige sikkerhetshendelser" in result
+    assert "[IT og sikkerhet > Utfordringer]" in result
+
+
+def test_search_table_row_comes_with_header_row():
+    result = _search(LARGE_DOCX, "driftsresultat")
+    assert "[Økonomi > Nøkkeltall]" in result
+    assert "| Nøkkeltall | 2025 | 2026 |" in result
+    assert "| Driftsresultat | 31,2 MNOK | 38,5 MNOK |" in result
+    # Andre rader i tabellen skal ikke være med.
+    assert "| Omsetning |" not in result
+
+
+def test_search_all_words_must_be_in_same_sentence():
+    assert "Ingrid Solberg" in _search(LARGE_DOCX, "kontaktperson nord")
+    assert _search(LARGE_DOCX, "kontaktperson sør").startswith("Ingen treff")
+
+
+def test_search_list_items_and_table_cells_in_small_doc():
+    assert "3. Test med ekte kunder" in _search(SAMPLE_DOCX, "ekte kunder")
+    result = _search(SAMPLE_DOCX, "Nordmann")
+    assert "[Budsjett]" in result  # tittelen er ikke med i stien
+    assert "| Utvikling | 850 000 | Kari Nordmann |" in result
+
+
+def test_search_limits_number_of_hits(monkeypatch):
+    monkeypatch.setattr(tools, "MAX_SEARCH_HITS", 3)
+    result = _search(LARGE_DOCX, "kundene")  # vanlig ord i fylltekst
+    assert "Viser 3 av" in result
+    assert result.count("\n- ") == 3
+
+
+def test_search_no_hits_gives_tips():
+    result = _search(LARGE_DOCX, "lønnsoppgjør")
+    assert result.startswith("Ingen treff")
+    assert "docx_outline" in result
+
+
+def test_search_empty_query_returns_error_text():
+    assert _search(SAMPLE_DOCX, "   ").startswith("Feil:")
+
+
+def test_search_missing_file_returns_error_text():
+    assert _search("finnes_ikke.docx", "x").startswith("Feil:")
