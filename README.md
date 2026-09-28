@@ -9,6 +9,7 @@ Målet er et lager av fillesere: hver filtype er én modul i `src/docxreader/rea
 ```bash
 uv sync                 # installer avhengigheter i .venv
 cp .env.example .env    # legg inn ANTHROPIC_API_KEY
-uv run docxreader "Hva står det i samples/prosjektplan.docx?"
+uv run docxreader "Hva står det i samples/prosjektplan.docx?"   # ett spørsmål
+uv run docxreader                                                # chat med minne (/ny, /avslutt)
 uv run pytest           # tester (uten Claude)
 ```

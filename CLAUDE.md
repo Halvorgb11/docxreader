@@ -37,8 +37,8 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
   - `blocks.py` – filtype-uavhengig: `Block`, `DocumentError`, `outline`, `section_end`, `find_section`, `heading_paths`, `block_paths`, `search_units`, `render`, `rows_to_markdown`/`table_block`, `heading()`, `count_words`.
   - `readers/__init__.py` – menyene `READERS` (filendelse → `load`) og `TABLE_READERS` (filendelse → `load_tables`), `load_document(path)` og `load_table(path, sheet)`.
   - `readers/word.py` (.docx), `readers/powerpoint.py` (.pptx), `readers/excel.py` (.xlsx), `readers/csvfile.py` (.csv), `readers/mail.py` (.eml via `load_eml`, .msg via `load_msg`), `readers/htmltext.py` (`html_to_text`, HTML → markdown-lignende tekst), `readers/media.py` (`media_block`: PDF/bilde → LangChain-innholdsblokk), `readers/calendar.py` (.ics; `calendar_blocks`), `readers/text.py` (.md via `load_markdown`, .txt via `load_plain`).
-  - `agent.py` = Claude + `create_agent` (`build_agent()`, `ask()`), `__init__.py` = CLI (`main`, `print_messages`).
-- `tests/` – pytest-tester: `test_readers.py` (meny + felles), `test_word.py`, `test_powerpoint.py`, `test_excel.py`, `test_csv.py`, `test_query_table.py`, `test_mail.py`, `test_media.py`, `test_calendar.py`, `test_outlook_files.py` (ekte .msg-filer), `test_text.py`.
+  - `agent.py` = Claude + `create_agent` (`build_agent(model, checkpointer)`, `ask()` uten minne, `Conversation` med minne), `__init__.py` = CLI (`main`, `chat`, `print_messages`).
+- `tests/` – pytest-tester: `test_readers.py` (meny + felles), `test_word.py`, `test_powerpoint.py`, `test_excel.py`, `test_csv.py`, `test_query_table.py`, `test_mail.py`, `test_media.py`, `test_calendar.py`, `test_outlook_files.py` (ekte .msg-filer), `test_memory.py` (minne og kontekstrydding med falske chatmodeller), `test_text.py`.
 - `samples/` – testfiler: `prosjektplan.docx` (lite), `arsrapport.docx` (~8000 ord, plantede fakta), `salgsmote.pptx` (faktum i talenotater: Havbruk Vest AS), `budsjett.xlsx` (kommentar i Oversikt!C3: Nordic Data AS; Transaksjoner rad 180: Fjellsikring AS 1 250 000 – bevisst selvmotsigende, 250 rader, skjult ark), `reiseregning.csv` (cp1252, `;`, norske tall, tom linje, `;` i anførselstegn; mest brukt: Per Æsøy 10 530 kr), `retningslinjer.md`. `tilbud.eml` (tråd i to nivåer med plantet møtetid «8. oktober kl. 10 i rom Fjorden», vedlegg .xlsx/.docx/.png/videresendt e-post med «gjelder til 15. oktober 2026», innebygd logo). `invitasjon.ics` (skrevet for hånd: 4 hendelser – ukentlig statusmøte man/tor med EXDATE 15. okt – TZID, UTC, heldag 23.–24. nov, brutt linje med parkeringskode 4471, VALARM, CN med kolon). `kvittering.png` (totalt 1 487,50 kr) og `moteinnkalling.pdf` (2 sider, side 2: Ålesund 14. november 2026) – begge uten tekstlag. `tilbud.eml` har bildevedlegget `skisse.png` (Rack B3). `budsjett.xlsx` har også arket `Kvartal` (tittel, to tabeller fra kolonne B, tom rad i tabell, tall som tekst i tre formater, fotnote; faktisk Q1 = 2 525 000,50).
 - `samples/outlook/` – fem ekte Outlook-filer fra MSGReader og mapi (MIT; lisenser og kilder i `samples/outlook/README.md`): e-post i e-post med PDF-er, fransk emne, russisk tekst, kontaktkort, HTML-e-post med tekstvedlegg. Ingen ekte avtale-/møte-.msg funnet (GitHub indekserer ikke binærfiler).
 - `scripts/make_sample_docx.py`, `make_large_sample_docx.py`, `make_sample_pptx.py`, `make_sample_xlsx.py`, `make_sample_csv.py`, `make_sample_eml.py`, `make_sample_media.py` – lager testfilene på nytt. `retningslinjer.md` er skrevet for hånd.
@@ -51,7 +51,8 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 
 ## Kommandoer
 - `uv sync` – installer avhengigheter. `uv add <pakke>` – legg til avhengighet.
-- `uv run docxreader "spørsmål"` – kjør agenten (krever `.env`). Skriver ut hvert steg i agentløkken.
+- `uv run docxreader "spørsmål"` – ett spørsmål uten minne (krever `.env`). Skriver ut hvert steg i agentløkken.
+- `uv run docxreader` – chat med samtaleminne. `/ny` = ny samtale, `/avslutt` eller Ctrl-D = avslutt.
 - `uv run pytest` – kjør tester. `uv run python ...` – kjør kode i prosjektets miljø.
 - Repo: https://github.com/Halvorgb11/docxreader (privat, branch `main`). Commit og push med vanlig `git`.
 - Node.js er installert via nvm (v24 LTS). I nye skall: `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"` hvis `node` ikke finnes.
@@ -70,13 +71,17 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 9. [x] Excel (.xlsx)-leser (via skillen `ny-filleser`).
 10. [x] `query_table` (filtrer/sorter/tell/summer, godkjent av brukeren) + CSV-leser. Agenten bruker nå `query_table` i stedet for å lese alle radene.
 11. [x] E-post (.eml/.msg) med vedlegg lest av de andre leserne.
-12. [ ] Ideer: samtaleminne (checkpointer) + `ContextEditingMiddleware`, liste dokumenter i en mappe, kommentarer/sporede endringer, RAG ved mange dokumenter.
+12. [x] Samtaleminne: `InMemorySaver` + `thread_id` i `Conversation`, chat i CLI, `ContextEditingMiddleware`.
+13. [ ] Ideer: varig minne mellom kjøringer (SqliteSaver), liste dokumenter i en mappe, kommentarer/sporede endringer, RAG ved mange dokumenter.
 
 ## Konvensjoner
 - Verktøy defineres med `@tool(parse_docstring=True)` og Google-stil docstring (`Args:`), slik at argumentbeskrivelsene havner i skjemaet modellen ser.
 - Verktøy returnerer feil som tekst som begynner med `Feil:` i stedet for å kaste unntak, så modellen kan forstå og håndtere feilen.
 - Verktøy testes med `tool.invoke({...})` i `tests/`, uten å kalle Claude.
 - Systemprompten har arbeidsregler for agenten (f.eks. «regn ikke i hodet – bruk query_table»); verktøybeskrivelser sier hva verktøyet kan. Uten regelen regnet Claude små tabeller selv.
+- Samtaleminne: `Conversation` har én `InMemorySaver` og en `thread_id` (uuid); `ask()` sender bare det nye spørsmålet og returnerer bare nye meldinger; `new_thread()` = ny samtale. Minnet forsvinner når programmet avslutter.
+- Kontekstrydding: `ContextEditingMiddleware(ClearToolUsesEdit(trigger=CONTEXT_TRIGGER_TOKENS=40 000, keep=KEEP_TOOL_RESULTS=4, placeholder=norsk tekst))`. Ryddingen gjøres på en kopi i `wrap_model_call` – Claude ser ryddet versjon, checkpointeren beholder alt. Konstantene leses når agenten bygges (testene endrer dem med monkeypatch).
+- Tester av agenten uten Claude: falske chatmodeller som arver `BaseChatModel` (`_generate`, `_llm_type`, `bind_tools` → self), sendt inn via `build_agent(model=…)`/`Conversation(model)`. `chat(conversation, read=…)` tar en falsk input-funksjon.
 - Modell settes i `agent.py` som `MODEL = "anthropic:claude-sonnet-5"` (streng-format `leverandør:modell`).
 - .docx har ingen sider; struktur hentes fra avsnittsstiler (`Title`, `Heading N`, `List Bullet`, `List Number`) og gjøres om til markdown.
 - Fallgruve: `doc.paragraphs` og `doc.tables` er separate lister. Bruk `doc.iter_inner_content()` for avsnitt og tabeller i riktig rekkefølge.
@@ -114,6 +119,7 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - 2026-09-27: Fjernet `read_pdf`, `pypdf` og `samples/rapport.pdf`.
 - 2026-09-28: Flermålsanalyse av filtyper (relevans 40 %, enkelhet 30 %, utvidbarhet 30 %): xlsx 4,4 > pptx 3,7 > csv 3,6 > md/txt 3,3 = e-post 3,3 > json/xml 2,9 > html 2,6 > odt 2,3 > epub/rtf 1,9.
 - 2026-09-28: Laget skillen `.claude/skills/ny-filleser` for å legge til filtyper på en ensartet måte.
+- 2026-09-28: Samtaleminne (InMemorySaver + thread_id) og kontekstrydding; verifisert mot Claude: oppfølgingsspørsmål («den posten») besvart fra minnet uten nytt verktøykall.
 - 2026-09-28: Testet mot 17 ekte .msg-filer (MSGReader, mapi): 15 OK; fant kontaktkort som ble vist som tom e-post → Outlook-elementtyper. 5 filer lagt i `samples/outlook/` som faste tester.
 - 2026-09-28: `pypdf` tilbake (bare sidetelling/utklipp), `view_file(pages=…)`; `calculate` med parenteser.
 - 2026-09-28: Lagt til .ics-leser og kalenderfelt/invitasjoner i e-post; regel i systemprompten om å bruke query_table til utregninger.

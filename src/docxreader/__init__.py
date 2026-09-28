@@ -1,7 +1,8 @@
-"""docxreader: la en Claude-agent lese dokumenter (.docx, .pptx, .md, .txt) via LangChain-verktøy.
+"""docxreader: la en Claude-agent lese dokumenter via LangChain-verktøy.
 
 Kjør fra kommandolinjen:
-    uv run docxreader "Hva står det i samples/prosjektplan.docx?"
+    uv run docxreader "Hva står det i samples/prosjektplan.docx?"   (ett spørsmål)
+    uv run docxreader                                               (chat med minne)
 """
 
 import sys
@@ -25,11 +26,12 @@ def _preview(content) -> str:
     return content if len(content) < 300 else content[:300] + " …"
 
 
-def print_messages(messages) -> None:
+def print_messages(messages, show_user: bool = True) -> None:
     """Skriv ut hvert steg i agentløkken så vi ser hva som skjedde."""
     for msg in messages:
         if isinstance(msg, HumanMessage):
-            print(f"\n👤 Bruker: {msg.content}")
+            if show_user:
+                print(f"\n👤 Bruker: {msg.content}")
         elif isinstance(msg, AIMessage) and msg.tool_calls:
             # Claude svarer ikke ennå – den ber om å få kjøre et verktøy.
             for call in msg.tool_calls:
@@ -40,10 +42,43 @@ def print_messages(messages) -> None:
             print(f"\n🤖 Claude svarer:\n{msg.text}")
 
 
+CHAT_HELP = """💬 Samtale med minne – agenten husker det du har spurt om.
+   Skriv spørsmål om filer, f.eks. "Hva står det i samples/prosjektplan.docx?"
+   /ny = ny samtale (glem alt)   /avslutt eller Ctrl-D = avslutt"""
+
+
+def chat(conversation=None, read=input) -> None:
+    """Chat i terminalen. Hele økten er én samtale (én thread_id) til /ny.
+    `read` kan byttes ut i tester (i stedet for å lese fra tastaturet)."""
+    from docxreader.agent import Conversation  # trenger API-nøkkel først her
+
+    conversation = conversation or Conversation()
+    print(CHAT_HELP)
+    while True:
+        try:
+            question = read("\n👤 Du: ").strip()
+        except (EOFError, KeyboardInterrupt):  # Ctrl-D / Ctrl-C
+            print()
+            return
+        if not question:
+            continue
+        if question in ("/avslutt", "/exit", "/quit"):
+            return
+        if question == "/ny":
+            conversation.new_thread()
+            print("🆕 Ny samtale – tidligere spørsmål er glemt.")
+            continue
+        try:
+            print_messages(conversation.ask(question), show_user=False)
+        except Exception as e:  # f.eks. nettverksfeil – ikke mist samtalen
+            print(f"\n⚠️ Feil: {type(e).__name__}: {e}")
+
+
 def main() -> None:
+    # Uten spørsmål: chat med minne. Med spørsmål: ett svar, uten minne.
     if len(sys.argv) < 2:
-        print('Bruk: uv run docxreader "spørsmål om et dokument"')
-        sys.exit(1)
+        chat()
+        return
 
     # Importeres her så `--help`-lignende bruk ikke trenger API-nøkkel.
     from docxreader.agent import ask
