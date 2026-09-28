@@ -86,6 +86,9 @@ def read_document(path: str) -> str:
     except DocumentError as e:
         return f"Feil: {e}"
     if not blocks:
+        # Metateksten kan ha alt innholdet (f.eks. et Outlook-kontaktkort).
+        if meta:
+            return meta + "\n\n(Dokumentet inneholder ingen tekst utover dette.)"
         return f"Dokumentet '{path}' inneholder ingen tekst."
 
     total = sum(b.words for b in blocks)

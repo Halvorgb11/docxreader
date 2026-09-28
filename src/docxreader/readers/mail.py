@@ -55,11 +55,10 @@ class Mail:
     subject: str = ""
     text: str = ""  # brødteksten som markdown-lignende tekst
     attachments: list[Attachment] = field(default_factory=list)
-    # Bare for Outlook-avtaler og møteinnkallinger (.msg):
-    start: str = ""
-    end: str = ""
-    location: str = ""
-    organizer: str = ""
+    # Andre Outlook-elementer (.msg) enn e-post: kontakt, oppgave, avtale …
+    kind: str = "E-post"
+    show_mail_headers: bool = True  # Fra/Til/Emne gir mening for e-post og møter, ikke kontakter
+    details: list[tuple[str, str]] = field(default_factory=list)  # ("Start", "2026-11-14 09:00")
 
 
 def _format_date(value) -> str:
@@ -171,6 +170,59 @@ def _recipients(msg, kind: RecipientType) -> str:
     return _clean(_field(msg, "to" if kind == RecipientType.TO else "cc"))
 
 
+# Outlook-elementtyper. `classType` på .msg-filen sier hva slags element det er
+# ("IPM.Note" = e-post, "IPM.Contact" = kontakt …). Hver type får sine felt,
+# med norske navn: (visningsnavn, feltnavn i extract-msg).
+CALENDAR_FIELDS = [("Start", "startDate"), ("Slutt", "endDate"), ("Sted", "location"), ("Arrangør", "organizer")]
+OUTLOOK_ITEMS = [
+    # (classType-prefiks, visningsnavn, vis Fra/Til/Emne?, felt)
+    ("IPM.Schedule.Meeting", "Møteinnkalling (Outlook)", True, CALENDAR_FIELDS),
+    ("IPM.Appointment", "Avtale (Outlook)", True, CALENDAR_FIELDS),
+    ("IPM.Contact", "Kontakt (Outlook)", False, [
+        ("Navn", "displayName"), ("Firma", "companyName"), ("Stilling", "jobTitle"),
+        ("Avdeling", "departmentName"), ("E-post", "email1EmailAddress"), ("E-post 2", "email2EmailAddress"),
+        ("E-post 3", "email3EmailAddress"), ("Telefon (jobb)", "businessTelephoneNumber"),
+        ("Mobil", "mobileTelephoneNumber"), ("Telefon (privat)", "homeTelephoneNumber"),
+        ("Adresse (jobb)", "workAddress"), ("Adresse (privat)", "homeAddress"),
+        ("Nettside", "businessHomePage"), ("Fødselsdag", "birthday"),
+    ]),
+    ("IPM.Task", "Oppgave (Outlook)", False, [
+        ("Tittel", "subject"), ("Start", "taskStartDate"), ("Frist", "taskDueDate"),
+        ("Status", "taskStatus"), ("Fullført", "percentComplete"), ("Eier", "taskOwner"),
+    ]),
+    ("IPM.StickyNote", "Notat (Outlook)", False, [("Opprettet", "date")]),
+]
+TASK_STATUS = {"NOT_STARTED": "ikke startet", "IN_PROGRESS": "pågår", "COMPLETE": "fullført",
+               "WAITING_ON_OTHER": "venter på andre", "DEFERRED": "utsatt"}
+
+
+def _format_value(name: str, value) -> str:
+    """Et Outlook-felt -> tekst: datoer, prosent, statuser og tekst med \x00."""
+    if isinstance(value, datetime):
+        return _format_date(value)
+    if name == "percentComplete" and isinstance(value, (int, float)):
+        return f"{round(value * 100)} %"
+    if hasattr(value, "name") and hasattr(value, "value"):  # en enum, f.eks. TaskStatus.IN_PROGRESS
+        return TASK_STATUS.get(value.name, value.name.lower().replace("_", " "))
+    return " ".join(_clean(value).split())
+
+
+def _outlook_item(msg) -> tuple[str, bool, list[tuple[str, str]]]:
+    """(visningsnavn, vis e-posthode?, felt) for Outlook-elementet."""
+    class_type = _clean(_field(msg, "classType"))
+    for prefix, kind, headers, fields in OUTLOOK_ITEMS:
+        # Møter kan også kjennes igjen på at de har et starttidspunkt.
+        if class_type.startswith(prefix) or (not class_type and fields is CALENDAR_FIELDS and _field(msg, "startDate")):
+            details = []
+            for label, name in fields:
+                value = _field(msg, name)
+                text = _format_value(name, value) if value not in (None, "") else ""
+                if text:
+                    details.append((label, text))
+            return kind, headers, details
+    return "E-post", True, []
+
+
 def _mail_from_msg(msg) -> Mail:
     """Outlook-melding (fra extract-msg) -> Mail. Alle felt leses med _field,
     fordi .msg-filer også kan være kalenderinvitasjoner o.l. uten alle feltene,
@@ -195,6 +247,7 @@ def _mail_from_msg(msg) -> Mail:
         else:
             attachments.append(Attachment(name, note="vedleggstypen kan ikke leses"))
 
+    kind, show_headers, details = _outlook_item(msg)
     return Mail(
         sender=_clean(_field(msg, "sender")),
         to=_recipients(msg, RecipientType.TO),
@@ -203,10 +256,9 @@ def _mail_from_msg(msg) -> Mail:
         subject=_clean(_field(msg, "subject")),
         text=text,
         attachments=attachments,
-        start=_format_date(_field(msg, "startDate")),
-        end=_format_date(_field(msg, "endDate")),
-        location=_clean(_field(msg, "location")),
-        organizer=_clean(_field(msg, "organizer")),
+        kind=kind,
+        show_mail_headers=show_headers,
+        details=details,
     )
 
 
@@ -343,10 +395,10 @@ def _split_thread(text: str) -> list[tuple[str, str]]:
 
 
 def _meta(mail: Mail) -> str:
-    lines = ["Møteinnkalling (Outlook)" if mail.start else "E-post"]
-    for label, value in [("Fra", mail.sender), ("Til", mail.to), ("Kopi", mail.cc),
-                         ("Dato", mail.date), ("Emne", mail.subject), ("Start", mail.start),
-                         ("Slutt", mail.end), ("Sted", mail.location), ("Arrangør", mail.organizer)]:
+    lines = [mail.kind]
+    headers = [("Fra", mail.sender), ("Til", mail.to), ("Kopi", mail.cc), ("Dato", mail.date),
+               ("Emne", mail.subject)] if mail.show_mail_headers else []
+    for label, value in headers + mail.details:
         if value:
             lines.append(f"{label}: {' '.join(str(value).split())}")
     if mail.attachments:
@@ -404,6 +456,12 @@ def _attachment_blocks(attachment: Attachment, depth: int) -> list[Block]:
 def _mail_blocks(mail: Mail, depth: int = 0) -> tuple[list[Block], str]:
     blocks: list[Block] = []
     for title, text in _split_thread(mail.text):
+        # E-post har alltid "## Melding". Kontakter, oppgaver og notater kaller
+        # teksten "Notater", og utelater den når den er tom.
+        if not mail.show_mail_headers and title == "Melding":
+            if not text.strip():
+                continue
+            title = "Notater"
         if title != "Melding" and not text.strip():
             continue
         blocks.append(heading(SECTION_LEVEL, title))

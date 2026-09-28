@@ -286,3 +286,40 @@ def test_msg_field_that_cannot_be_decoded_does_not_crash(tmp_path, monkeypatch):
     result = _load_fake(tmp_path, monkeypatch, fake)
     assert result.startswith("E-post\nFra: Kari <kari@x.no>\nDato:")  # Til mangler, resten er med
     assert "Velkommen." in result
+
+
+# --- Andre Outlook-elementer (classType) ----------------------------------------
+
+
+def test_msg_task_fields(tmp_path, monkeypatch):
+    from extract_msg.enums import TaskStatus
+
+    fake = _fake_msg(subject="Bestille servere", body="Husk rabattkoden.")
+    fake.classType = "IPM.Task\x00"
+    fake.taskDueDate = datetime.datetime(2026, 10, 15, 0, 0)
+    fake.taskStatus = TaskStatus.IN_PROGRESS
+    fake.percentComplete = 0.5
+    result = _load_fake(tmp_path, monkeypatch, fake)
+    assert result.startswith(
+        "Oppgave (Outlook)\nTittel: Bestille servere\nFrist: 2026-10-15 00:00\nStatus: pågår\nFullført: 50 %"
+    )
+    assert "Fra:" not in result  # e-posthode gir ikke mening for en oppgave
+    assert "## Notater\n\nHusk rabattkoden." in result
+
+
+def test_msg_meeting_request_by_class_type(tmp_path, monkeypatch):
+    fake = _fake_msg(subject="Styremøte")
+    fake.classType = "IPM.Schedule.Meeting.Request"
+    fake.startDate = datetime.datetime(2026, 11, 14, 9, 0)
+    fake.location = "Ålesund"
+    result = _load_fake(tmp_path, monkeypatch, fake)
+    assert result.startswith("Møteinnkalling (Outlook)\nFra: Kari <kari@x.no>")
+    assert "Emne: Styremøte\nStart: 2026-11-14 09:00\nSted: Ålesund" in result
+
+
+def test_msg_sticky_note_without_text_is_not_empty(tmp_path, monkeypatch):
+    fake = _fake_msg(body="")
+    fake.classType = "IPM.StickyNote"
+    result = _load_fake(tmp_path, monkeypatch, fake)
+    assert result.startswith("Notat (Outlook)\nOpprettet: 2026-09-28 09:15")
+    assert "## Notater" not in result
