@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.messages import BaseMessage
 
-from docxreader.tools import docx_outline, read_docx, read_docx_section, search_docx
+from docxreader.tools import ALL_TOOLS
 
 # Leser .env og legger ANTHROPIC_API_KEY i miljøvariablene.
 # langchain-anthropic finner nøkkelen der automatisk.
@@ -29,7 +29,8 @@ MODEL = "anthropic:claude-sonnet-5"
 
 SYSTEM_PROMPT = """Du er en assistent som svarer på spørsmål om dokumenter.
 Bruk verktøyene dine til å lese filene brukeren viser til. Svar på norsk,
-og oppgi hvilken overskrift informasjonen står under når det er relevant.
+og oppgi hvilken overskrift (eller hvilket lysbilde) informasjonen står
+under når det er relevant.
 Hvis du ikke finner svaret i dokumentet, si det i stedet for å gjette."""
 
 
@@ -37,7 +38,7 @@ def build_agent():
     """Lag agenten. Verktøyene i `tools` er de eneste Claude kan bruke."""
     return create_agent(
         model=MODEL,
-        tools=[read_docx, docx_outline, read_docx_section, search_docx],
+        tools=ALL_TOOLS,
         system_prompt=SYSTEM_PROMPT,
     )
 

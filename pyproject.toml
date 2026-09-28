@@ -1,7 +1,7 @@
 [project]
 name = "docxreader"
 version = "0.1.0"
-description = "LangChain-verktøy som lar en Claude-agent lese Word-dokumenter (.docx)"
+description = "LangChain-verktøy som lar en Claude-agent lese dokumenter (Word, PowerPoint, Markdown, tekst)"
 readme = "README.md"
 authors = [
     { name = "Halvor Grefsrød Bolkesjø", email = "223762825+Halvorgb11@users.noreply.github.com" }
@@ -12,6 +12,7 @@ dependencies = [
     "langchain-anthropic>=1.7.4",
     "python-docx>=1.2.0",
     "python-dotenv>=1.2.3",
+    "python-pptx>=1.0.2",
 ]
 
 [project.scripts]
