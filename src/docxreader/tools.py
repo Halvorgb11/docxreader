@@ -61,12 +61,15 @@ def _with_meta(meta: str, text: str) -> str:
 def read_document(path: str) -> str:
     """Les et helt dokument og returner innholdet som markdown.
 
-    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), Markdown (.md) og
+    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), e-post (.eml, .msg), Markdown (.md) og
     tekst (.txt). Overskrifter blir #-overskrifter, lister blir markdown-lister
     og tabeller blir markdown-tabeller. I PowerPoint er hvert lysbilde en
     seksjon ("Lysbilde 3: Tittel"), med talenotater. I Excel er hvert ark en
     seksjon ("Ark: Salg") med radnummer og cellekommentarer; store ark er delt
     i underseksjoner på 100 rader ("Rad 2–101"). En CSV-fil er én tabell ("Tabell").
+    En e-post har Fra/Til/Dato/Emne øverst og seksjonene "Melding", "Tidligere
+    melding 1" … (sitert tråd) og "Vedlegg: navn" – vedlegg (Word, Excel osv.)
+    leses med og står under sin egen seksjon.
     For å filtrere, sortere, telle eller summere rader i Excel/CSV: bruk
     query_table i stedet for å lese alle radene.
     Er dokumentet stort, returneres innholdsfortegnelsen i stedet; bruk da
@@ -97,8 +100,8 @@ def read_document(path: str) -> str:
 def document_outline(path: str) -> str:
     """Vis innholdsfortegnelsen til et dokument, uten selve teksten.
 
-    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), Markdown (.md) og
-    tekst (.txt). Viser alle overskrifter (i PowerPoint: lysbilder, i Excel: ark) med
+    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), e-post (.eml, .msg), Markdown (.md) og
+    tekst (.txt). Viser alle overskrifter (i PowerPoint: lysbilder, i Excel: ark, i e-post: melding, tråd og vedlegg) med
     omtrentlig antall ord og tabeller i hver seksjon. Bruk dette først for å
     finne ut hvor svaret står, og les deretter bare den delen med read_section.
 
@@ -120,15 +123,16 @@ def document_outline(path: str) -> str:
 def read_section(path: str, heading: str) -> str:
     """Les én seksjon av et dokument: en overskrift med alt innhold under den,
     inkludert underoverskrifter. I PowerPoint er en seksjon ett lysbilde,
-    i Excel ett ark (eller et utsnitt av rader i et stort ark).
+    i Excel ett ark (eller et utsnitt av rader i et stort ark), i e-post
+    meldingen, en sitert tidligere melding eller ett vedlegg.
 
-    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), Markdown (.md) og
+    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), e-post (.eml, .msg), Markdown (.md) og
     tekst (.txt). Finn overskriftene med document_outline først. Hvis samme
     overskrift finnes flere steder, oppgi stien med " > ", f.eks. "Økonomi > Status".
 
     Args:
         path: Filsti til dokumentet, for eksempel "samples/prosjektplan.docx".
-        heading: Overskriften til seksjonen, f.eks. "Budsjett", "Økonomi > Status", "Lysbilde 3", "Ark: Salg" eller "Ark: Salg > Rad 102–201". Store/små bokstaver spiller ingen rolle.
+        heading: Overskriften til seksjonen, f.eks. "Budsjett", "Økonomi > Status", "Lysbilde 3", "Ark: Salg", "Ark: Salg > Rad 102–201" eller "Vedlegg: tilbud.xlsx". Store/små bokstaver spiller ingen rolle.
     """
     try:
         blocks, _ = load_document(path)
@@ -157,7 +161,7 @@ def search_document(path: str, query: str) -> str:
     """Søk etter ord i et dokument og få bare de treffende setningene,
     listepunktene og tabellradene, med overskriften de står under.
 
-    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), Markdown (.md) og
+    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), e-post (.eml, .msg), Markdown (.md) og
     tekst (.txt). Alle ordene i søket må finnes i samme setning/rad. Store/små
     bokstaver spiller ingen rolle, og deler av ord gir treff ("sikkerhet"
     finner "sikkerhetshendelser"). Bruk dette når du leter etter noe bestemt

@@ -29,8 +29,8 @@ MODEL = "anthropic:claude-sonnet-5"
 
 SYSTEM_PROMPT = """Du er en assistent som svarer på spørsmål om dokumenter.
 Bruk verktøyene dine til å lese filene brukeren viser til. Svar på norsk,
-og oppgi hvor informasjonen står (overskrift, lysbilde, eller ark og rad)
-når det er relevant.
+og oppgi hvor informasjonen står (overskrift, lysbilde, ark og rad, eller
+del av e-posten/vedlegg) når det er relevant.
 Hvis du ikke finner svaret i dokumentet, si det i stedet for å gjette."""
 
 

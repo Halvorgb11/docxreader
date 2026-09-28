@@ -44,3 +44,27 @@ def test_suffix_is_case_insensitive(tmp_path):
     f = tmp_path / "NOTAT.MD"
     f.write_text("# Hei\n\nTekst.")
     assert "# Hei" in read_document.invoke({"path": str(f)})
+
+
+# --- Felles logikk i blocks.py ------------------------------------------------
+
+from docxreader.blocks import split_sentences  # noqa: E402
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Første. Andre!", ["Første.", "Andre!"]),
+    ("Møtet er kl. 10 i rom Fjorden. Ta med PC.", ["Møtet er kl. 10 i rom Fjorden.", "Ta med PC."]),
+    ("Fristen er 8. oktober. Ikke glem.", ["Fristen er 8. oktober.", "Ikke glem."]),
+    ("Gjelder fra 1. januar 2027. De erstatter reglene.", ["Gjelder fra 1. januar 2027.", "De erstatter reglene."]),
+    ("Vi har f.eks. Oslo og Bergen. Ferdig.", ["Vi har f.eks. Oslo og Bergen.", "Ferdig."]),
+])
+def test_split_sentences_handles_norwegian_abbreviations_and_dates(text, expected):
+    assert split_sentences(text) == expected
+
+
+def test_top_level_heading_wins_when_same_name_is_nested(tmp_path):
+    f = tmp_path / "a.md"
+    f.write_text("## Innledning\nØverst.\n## Kapittel\n### Innledning\nNede.")
+    from docxreader.tools import read_section
+
+    assert read_section.invoke({"path": str(f), "heading": "Innledning"}) == "## Innledning\n\nØverst."

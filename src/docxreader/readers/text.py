@@ -74,11 +74,13 @@ def _markdown_chunk_to_block(lines: list[str]) -> Block:
     return Block(paragraph, count_words(paragraph))
 
 
+def markdown_blocks(text: str) -> list[Block]:
+    """Markdown-tekst -> blokker. Brukes også for e-posttekst."""
+    return [_markdown_chunk_to_block(chunk) for chunk in _chunks(text, split_on_headings=True)]
+
+
 def load_markdown(path: Path) -> tuple[list[Block], str]:
-    blocks = []
-    for chunk in _chunks(read_text(path), split_on_headings=True):
-        blocks.append(_markdown_chunk_to_block(chunk))
-    return blocks, ""
+    return markdown_blocks(read_text(path)), ""
 
 
 def load_plain(path: Path) -> tuple[list[Block], str]:

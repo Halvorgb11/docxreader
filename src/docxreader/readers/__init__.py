@@ -16,7 +16,7 @@ Legge til en ny filtype (se også skillen .claude/skills/ny-filleser):
 from pathlib import Path
 
 from docxreader.blocks import Block, DocumentError
-from docxreader.readers import csvfile, excel, powerpoint, text, word
+from docxreader.readers import csvfile, excel, mail, powerpoint, text, word
 from docxreader.tables import Table
 
 READERS = {
@@ -24,6 +24,8 @@ READERS = {
     ".pptx": powerpoint.load,
     ".xlsx": excel.load,
     ".csv": csvfile.load,
+    ".eml": mail.load_eml,
+    ".msg": mail.load_msg,
     ".md": text.load_markdown,
     ".txt": text.load_plain,
 }

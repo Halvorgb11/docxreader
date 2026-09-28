@@ -1,9 +1,9 @@
 # docxreader
 
 ## Om prosjektet
-LangChain-verktøy (`@tool`) som lar en Claude-agent lese dokumenter. Støtter nå .docx, .pptx, .xlsx, .csv, .md og .txt, pluss spørringer i regneark/CSV (`query_table`).
+LangChain-verktøy (`@tool`) som lar en Claude-agent lese dokumenter. Støtter nå .docx, .pptx, .xlsx, .csv, .eml, .msg, .md og .txt, pluss spørringer i regneark/CSV (`query_table`).
 
-**Langsiktig mål (2026-09-28):** repoet skal være en meny/et lager av fillesere for mange filtyper. Ny filtype = ny modul i `readers/` + én linje i `READERS`. Prioritert rekkefølge videre (fra flermålsanalyse 2026-09-28): e-post (.eml/.msg). PDF og bilder utelates fordi Claude API leser dem direkte.
+**Langsiktig mål (2026-09-28):** repoet skal være en meny/et lager av fillesere for mange filtyper. Ny filtype = ny modul i `readers/` + én linje i `READERS`. Alle filtyper fra toppen av flermålsanalysen (2026-09-28) er nå med; neste kandidater: JSON/XML, HTML (`readers/htmltext.py` finnes allerede). PDF og bilder utelates fordi Claude API leser dem direkte.
 
 Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser PDF direkte, men ikke .docx. `read_pdf` ble fjernet samme dag (finnes i git-historikken, commit `94f61b4`).
 
@@ -21,6 +21,7 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - `python-docx` – lesing av .docx (importeres som `import docx`).
 - `python-pptx` – lesing av .pptx (importeres som `import pptx`).
 - `openpyxl` – lesing av .xlsx.
+- `extract-msg` – lesing av Outlook .msg (kan bare lese, ikke lage .msg). `.eml` leses med `email` fra standardbiblioteket.
 - `python-dotenv` – leser `ANTHROPIC_API_KEY` fra `.env`.
 - `pytest` (dev) – tester.
 
@@ -32,11 +33,11 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
   - `tables.py` – tabelldata: `Table`, `make_table`, `table_blocks` (tabell → blokker, deling i `ROWS_PER_PART`), `parse_number`, `find_column`, `make_filter`, `query` (logikken bak `query_table`).
   - `blocks.py` – filtype-uavhengig: `Block`, `DocumentError`, `outline`, `section_end`, `find_section`, `heading_paths`, `block_paths`, `search_units`, `render`, `rows_to_markdown`/`table_block`, `heading()`, `count_words`.
   - `readers/__init__.py` – menyene `READERS` (filendelse → `load`) og `TABLE_READERS` (filendelse → `load_tables`), `load_document(path)` og `load_table(path, sheet)`.
-  - `readers/word.py` (.docx), `readers/powerpoint.py` (.pptx), `readers/excel.py` (.xlsx), `readers/csvfile.py` (.csv), `readers/text.py` (.md via `load_markdown`, .txt via `load_plain`).
+  - `readers/word.py` (.docx), `readers/powerpoint.py` (.pptx), `readers/excel.py` (.xlsx), `readers/csvfile.py` (.csv), `readers/mail.py` (.eml via `load_eml`, .msg via `load_msg`), `readers/htmltext.py` (`html_to_text`, HTML → markdown-lignende tekst), `readers/text.py` (.md via `load_markdown`, .txt via `load_plain`).
   - `agent.py` = Claude + `create_agent` (`build_agent()`, `ask()`), `__init__.py` = CLI (`main`, `print_messages`).
-- `tests/` – pytest-tester: `test_readers.py` (meny + felles), `test_word.py`, `test_powerpoint.py`, `test_excel.py`, `test_csv.py`, `test_query_table.py`, `test_text.py`.
-- `samples/` – testfiler: `prosjektplan.docx` (lite), `arsrapport.docx` (~8000 ord, plantede fakta), `salgsmote.pptx` (faktum i talenotater: Havbruk Vest AS), `budsjett.xlsx` (kommentar i Oversikt!C3: Nordic Data AS; Transaksjoner rad 180: Fjellsikring AS 1 250 000 – bevisst selvmotsigende, 250 rader, skjult ark), `reiseregning.csv` (cp1252, `;`, norske tall, tom linje, `;` i anførselstegn; mest brukt: Per Æsøy 10 530 kr), `retningslinjer.md`. `budsjett.xlsx` har også arket `Kvartal` (tittel, to tabeller fra kolonne B, tom rad i tabell, tall som tekst i tre formater, fotnote; faktisk Q1 = 2 525 000,50).
-- `scripts/make_sample_docx.py`, `make_large_sample_docx.py`, `make_sample_pptx.py`, `make_sample_xlsx.py`, `make_sample_csv.py` – lager testfilene på nytt. `retningslinjer.md` er skrevet for hånd.
+- `tests/` – pytest-tester: `test_readers.py` (meny + felles), `test_word.py`, `test_powerpoint.py`, `test_excel.py`, `test_csv.py`, `test_query_table.py`, `test_mail.py`, `test_text.py`.
+- `samples/` – testfiler: `prosjektplan.docx` (lite), `arsrapport.docx` (~8000 ord, plantede fakta), `salgsmote.pptx` (faktum i talenotater: Havbruk Vest AS), `budsjett.xlsx` (kommentar i Oversikt!C3: Nordic Data AS; Transaksjoner rad 180: Fjellsikring AS 1 250 000 – bevisst selvmotsigende, 250 rader, skjult ark), `reiseregning.csv` (cp1252, `;`, norske tall, tom linje, `;` i anførselstegn; mest brukt: Per Æsøy 10 530 kr), `retningslinjer.md`. `tilbud.eml` (tråd i to nivåer med plantet møtetid «8. oktober kl. 10 i rom Fjorden», vedlegg .xlsx/.docx/.png/videresendt e-post med «gjelder til 15. oktober 2026», innebygd logo). `budsjett.xlsx` har også arket `Kvartal` (tittel, to tabeller fra kolonne B, tom rad i tabell, tall som tekst i tre formater, fotnote; faktisk Q1 = 2 525 000,50).
+- `scripts/make_sample_docx.py`, `make_large_sample_docx.py`, `make_sample_pptx.py`, `make_sample_xlsx.py`, `make_sample_csv.py`, `make_sample_eml.py` – lager testfilene på nytt. `retningslinjer.md` er skrevet for hånd.
 - `.env.example` – mal for `.env` (API-nøkkel).
 - `.claude/skills/` – prosjektspesifikke skills. Hver skill ligger i egen mappe med en `SKILL.md`. Egne skills legges direkte her.
   - `ny-filleser/` – egen skill: oppskrift for å legge til en ny filtype (`/ny-filleser xlsx`), med maler i `templates/` for leser og test. Hold den i takt med konvensjonene under.
@@ -64,7 +65,7 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 8. [x] Flere filtyper: omstrukturert til `blocks.py` + `readers/` + generelle verktøy; lagt til .md/.txt og .pptx.
 9. [x] Excel (.xlsx)-leser (via skillen `ny-filleser`).
 10. [x] `query_table` (filtrer/sorter/tell/summer, godkjent av brukeren) + CSV-leser. Agenten bruker nå `query_table` i stedet for å lese alle radene.
-11. [ ] E-post (.eml/.msg).
+11. [x] E-post (.eml/.msg) med vedlegg lest av de andre leserne.
 12. [ ] Ideer: samtaleminne (checkpointer) + `ContextEditingMiddleware`, liste dokumenter i en mappe, kommentarer/sporede endringer, RAG ved mange dokumenter.
 
 ## Konvensjoner
@@ -85,9 +86,12 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - `query_table(path, sheet, where: list[str], sort_by, descending, columns: list[str], limit, group_by, aggregate: Literal[count|sum|avg|min|max], value_column)`. Betingelser `"Kolonne op verdi"`, op = `= != > < >= <= ~` (~ = inneholder). Et element i `where` kan ha alternativer med ` OR ` (ELLER); flere elementer = OG. Tall sammenlignes som tall (`parse_number`: norsk `1 250,50`, engelsk `1,250.50`, `1.250.000,50`, `kr`/`NOK`/`$`/`€`/`%`, `,-`, typografisk minus; finnes både `,` og `.`, er det siste desimaltegnet; samme tegn flere ganger = tusenskille; ETT enkelt `,`/`.` = desimaltegn, så `1,250` = 1,25), ellers tekst uten hensyn til store/små bokstaver (ISO-datoer fungerer). Kolonner og ark: eksakt, så entydig delvis treff; `"Ark: "` foran arknavnet er lov; én tabell i filen → `sheet` ignoreres. Sortering: tomme celler sist. Grupper sorteres med største verdi først. Tomme celler hoppes over i summer; ikke-tall rapporteres. `MAX_QUERY_ROWS = 100`.
 - CSV: én seksjon `## Tabell`; skilletegn gjettes fra første linje (`; , tab |`, flest vinner); tekst via `text.read_text` (UTF-8, ellers cp1252); `Rad` = linjenummer; tomme linjer hoppes over; korte rader fylles ut, tomme overskrifter → `Kolonne N`.
 - Excel: hvert ark = `## Ark: <navn>` (+ ` (skjult)`), innhold som tabell med ekstra første kolonne `Rad` (Excel-radnummer). Første ikke-tomme rad = overskriftsrad. Over `ROWS_PER_PART = 100` datarader deles arket i `### Rad 2–101` osv., med overskriftsraden gjentatt. Formler: lastes både med `data_only=True` (lagret resultat) og uten; mangler resultat (fil aldri åpnet i Excel) vises formelen. Datoer uten klokkeslett → `2026-09-28`, heltall-float → heltall. Tomme rader og tomme kolonner til høyre fjernes; tomme ark nevnes bare i metateksten. Cellekommentarer → `Kommentarer:\n- C3: …`. Kjente begrensninger: tabeller side om side (horisontalt) i samme ark skilles ikke; en ny tabell uten tittel der overskriftsraden inneholder tall (f.eks. årstall 2025/2026) tolkes som fortsettelse av forrige tabell; diagrammer hoppes over; `MAX_WORDS` undervurderer token-mengden i talltabeller; `25 %` i tekst blir 25 (Excel-prosent lagret som tall blir 0.25).
+- E-post: `.eml` og `.msg` gjøres om til `Mail` (mellomform) → `_mail_blocks`. Metatekst: `E-post` + Fra/Til/Kopi/Dato/Emne/Vedlegg. Seksjoner (nivå 2): `Melding`, `Tidligere melding N` (sitert tråd, delt ved «Den/On … skrev/wrote …:», «-----Original Message-----/Opprinnelig melding/Forwarded message», eller Outlook-hode «Fra:» + «Sendt:/Dato:» innen 3 linjer; ett nivå `>` fjernes; siterte hodelinjer blir liste), `Vedlegg: navn`. Ren tekst foretrekkes framfor HTML. Vedlegg leses med `READERS` via midlertidig fil (bare filnavnet brukes, aldri stien), overskriftene flyttes så vedleggets øverste nivå blir 3 (`_nest`), vedleggets metatekst står først. Videresendt e-post (`message/rfc822` / `.msg`-type MSG) leses rekursivt, maks `MAX_DEPTH = 3`, navn = emnet. Innebygde bilder (Content-ID) er ikke vedlegg. Uleselige vedlegg får en merknad i parentes, aldri `Feil:`. Maks 20 MB per vedlegg.
 - Markdown: `#`-overskrifter starter alltid ny blokk (også uten tom linje foran); `#` i kodeblokker er ikke overskrifter; avsnitt over flere linjer slås sammen. `.txt` har ingen overskrifter. Tekst leses som UTF-8 (med BOM), ellers cp1252.
 - Tittel i overskriftsstier: finnes det nøyaktig ÉN nivå 1-overskrift, regnes den som tittel og utelates fra stiene; ellers er `#`-overskrifter med.
 - Seksjon = overskrift + alt fram til neste overskrift på samme eller høyere nivå (`_section_end`).
+- Passer flere overskrifter, men bare én ligger øverst (kortest sti), velges den (`"Melding"` = e-postens, ikke vedleggets).
+- Søket deler avsnitt i setninger med `split_sentences`: ikke etter forkortelser (`ABBREVIATIONS`: kl., f.eks., nr. …) eller når neste ord starter med liten bokstav/tall (`8. oktober`, `kl. 10`).
 - `read_section` tar overskrift eller sti med ` > ` (f.eks. `"Økonomi > Status"`); eksakt treff (alle deler) før delvis treff (alle deler, også foreldre: `"Transaksjoner > Rad 2–101"` finner `Ark: Transaksjoner > …`), uavhengig av store/små bokstaver. Tvetydig eller ukjent overskrift → `Feil:` med liste over alternativer.
 - `MAX_WORDS = 3000` (i `tools.py`): over dette gir `read_document` innholdsfortegnelsen, og `read_section` gir underoverskriftene. Tester endrer den med `monkeypatch`.
 - `search_document`: alle søkeord (delstrenger, uavhengig av store/små bokstaver) må finnes i samme bit – setning (avsnitt), listepunkt eller tabellrad (`search_units`). Treff grupperes under `[overskriftssti]` (`block_paths`); tabelltreff vises med overskriftsraden. Maks `MAX_SEARCH_HITS = 15`.
@@ -101,6 +105,7 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - 2026-09-27: Fjernet `read_pdf`, `pypdf` og `samples/rapport.pdf`.
 - 2026-09-28: Flermålsanalyse av filtyper (relevans 40 %, enkelhet 30 %, utvidbarhet 30 %): xlsx 4,4 > pptx 3,7 > csv 3,6 > md/txt 3,3 = e-post 3,3 > json/xml 2,9 > html 2,6 > odt 2,3 > epub/rtf 1,9.
 - 2026-09-28: Laget skillen `.claude/skills/ny-filleser` for å legge til filtyper på en ensartet måte.
+- 2026-09-28: Lagt til e-post (.eml/.msg) med vedlegg via menyen; `.msg` testet bare med falskt objekt (monkeypatch), ikke ekte Outlook-fil.
 - 2026-09-28: Fikset begrensninger: tabeller/titler/fotnoter i ark (`split_tables`), flere tallformater, ` OR ` i `where`.
 - 2026-09-28: Lagt til `query_table` (ett verktøy med valgfrie argumenter i stedet for flere små) og CSV-leser.
 - 2026-09-28: Lagt til Excel-leser (.xlsx) med skillen `ny-filleser`. Delvis treff tillatt også i foreldre-deler av overskriftsstier.

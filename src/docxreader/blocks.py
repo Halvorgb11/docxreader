@@ -39,6 +39,12 @@ def heading(level: int, text: str) -> Block:
     return Block("#" * level + " " + text, count_words(text), heading_level=level)
 
 
+def shift_headings(blocks: list[Block], by: int) -> list[Block]:
+    """Flytt alle overskrifter `by` nivåer ned, f.eks. så overskriftene i et
+    vedlegg havner under "## Vedlegg: x.docx". Maks nivå er 6 (######)."""
+    return [heading(min(b.heading_level + by, 6), b.heading_text) if b.heading_level else b for b in blocks]
+
+
 def rows_to_markdown(rows: list[list[str]]) -> str:
     """Tabell (liste av rader) -> markdown-tabell. Første rad blir overskrift."""
 
@@ -148,6 +154,13 @@ def find_section(blocks: list[Block], wanted_heading: str) -> int:
 
     for exact in (True, False):
         hits = [i for i, path in paths.items() if matches(path, exact)]
+        if len(hits) > 1:
+            # Ligger bare ÉN av dem øverst (kortest sti), er det den som menes:
+            # "Melding" er e-postens melding, ikke "Vedlegg: x.eml > Melding".
+            shortest = min(len(paths[i]) for i in hits)
+            top = [i for i in hits if len(paths[i]) == shortest]
+            if len(top) == 1:
+                hits = top
         if len(hits) == 1:
             return hits[0]
         if len(hits) > 1:
@@ -188,5 +201,26 @@ def search_units(block: Block) -> tuple[str, list[str]]:
         return "\n".join(lines[:2]), lines[2:]
     if "\n" in block.markdown:
         return "", block.markdown.splitlines()
-    # Del etter punktum/utrop/spørsmålstegn etterfulgt av mellomrom.
-    return "", re.split(r"(?<=[.!?])\s+", block.markdown)
+    return "", split_sentences(block.markdown)
+
+
+# Forkortelser som slutter med punktum uten at setningen slutter.
+ABBREVIATIONS = {
+    "kl", "ca", "nr", "bl.a", "f.eks", "dvs", "mv", "osv", "jf", "evt", "inkl", "ekskl",
+    "tlf", "mill", "mrd", "e.l", "o.l", "pga", "iht", "vs", "etc", "e.g", "i.e", "mr", "dr",
+}
+
+
+def split_sentences(text: str) -> list[str]:
+    """Del tekst i setninger etter . ! ? – men ikke etter forkortelser ("kl. 10",
+    "f.eks. Oslo") eller når neste ord starter med liten bokstav eller tall
+    ("8. oktober", "nr. 5")."""
+    pieces = re.split(r"(?<=[.!?])\s+", text)
+    sentences = [pieces[0]]
+    for piece in pieces[1:]:
+        last_word = sentences[-1].split()[-1].rstrip(".").casefold() if sentences[-1].split() else ""
+        if piece[:1].islower() or piece[:1].isdigit() or last_word in ABBREVIATIONS:
+            sentences[-1] += " " + piece  # samme setning
+        else:
+            sentences.append(piece)
+    return sentences
