@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import ToolMessage
 from PIL import Image
+from pypdf import PdfReader, PdfWriter
 
 from docxreader import _preview
 from docxreader.readers import media
@@ -72,10 +73,25 @@ def test_large_image_is_scaled_down(tmp_path):
     assert _decoded(block).size == (1568, 784)
 
 
+def _pdf(pages: int, password: str | None = None) -> bytes:
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=200, height=200)
+    if password is not None:
+        writer.encrypt(user_password=password, owner_password="eier")
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def _pages_in(block) -> int:
+    return len(PdfReader(io.BytesIO(base64.b64decode(block["base64"]))).pages)
+
+
 @pytest.mark.parametrize("name, content, message", [
     ("ødelagt.png", b"ikke et bilde", "er ikke et gyldig bilde"),
     ("falsk.pdf", b"ikke en pdf", "er ikke en gyldig PDF-fil"),
-    ("lang.pdf", b"%PDF-1.4\n" + b"<< /Type /Page >>\n" * 101 + b"<< /Type /Pages >>", "har 101 sider"),
+    ("ødelagt.pdf", b"%PDF-1.4\nbare tull", "er ikke en gyldig PDF-fil (ødelagt)"),
     ("data.xlsx", b"x", "er verken PDF eller bilde"),
 ])
 def test_errors_are_text(tmp_path, name, content, message):
@@ -85,11 +101,73 @@ def test_errors_are_text(tmp_path, name, content, message):
     assert isinstance(result, str) and result.startswith("Feil:") and message in result
 
 
+def _pdf_file(tmp_path, pages: int, **kwargs):
+    f = tmp_path / "rapport.pdf"
+    f.write_bytes(_pdf(pages, **kwargs))
+    return f
+
+
+def test_long_pdf_asks_for_pages(tmp_path):
+    result = _view(_pdf_file(tmp_path, 25))
+    assert "'rapport.pdf' har 25 sider; maks 20 sider per kall" in result
+    assert "pages='1-20'" in result
+
+
+def test_pdf_pages_are_cut_out(tmp_path):
+    f = _pdf_file(tmp_path, 25)
+    text, block = _view(f, pages="21-")
+    assert text["text"] == "Innholdet i 'rapport.pdf' følger. Side 21–25 av 25."
+    assert _pages_in(block) == 5
+    text, block = _view(f, pages="1, 3,5-6")
+    assert text["text"].endswith("Side 1, 3, 5–6 av 25.")
+    assert _pages_in(block) == 4
+
+
+def test_one_page_of_sample_pdf():
+    text, block = _view(SAMPLES / "moteinnkalling.pdf", pages="2")
+    assert text["text"].endswith("Side 2 av 2.")
+    assert _pages_in(block) == 1
+
+
+@pytest.mark.parametrize("pages, message", [
+    ("a", "forstår ikke pages='a'"),
+    ("30", "sidene '30' finnes ikke; dokumentet har 25 sider"),
+    ("5-3", "sidene '5-3' finnes ikke"),
+    ("1-25", "velger 25 sider; maks 20 per kall"),
+])
+def test_bad_pages(tmp_path, pages, message):
+    result = _view(_pdf_file(tmp_path, 25), pages=pages)
+    assert result.startswith("Feil:") and message in result
+
+
+def test_password_protected_pdf(tmp_path):
+    assert "er passordbeskyttet" in _view(_pdf_file(tmp_path, 1, password="hemmelig"))
+
+
+def test_pdf_with_empty_password_is_fine(tmp_path):
+    # "Kryptert" med tomt brukerpassord = bare kopisperre; kan leses.
+    text, _ = _view(_pdf_file(tmp_path, 2, password=""))
+    assert text["text"].endswith("2 sider.")
+
+
 def test_too_large_pdf(tmp_path, monkeypatch):
     monkeypatch.setattr(media, "MAX_PDF_BYTES", 10)
-    f = tmp_path / "stor.pdf"
-    f.write_bytes(b"%PDF-1.4 " + b"x" * 100)
-    assert "er for stor" in _view(f)
+    assert "er for stor" in _view(_pdf_file(tmp_path, 1))
+
+
+def test_multi_page_tiff_page_selection(tmp_path):
+    f = tmp_path / "skann.tif"
+    first, second = Image.new("RGB", (100, 50), "white"), Image.new("RGB", (60, 30), "black")
+    first.save(f, "TIFF", save_all=True, append_images=[second])
+    text, block = _view(f)
+    assert text["text"].endswith("Viser side 1 av 2.") and _decoded(block).size == (100, 50)
+    text, block = _view(f, pages="2")
+    assert text["text"].endswith("Viser side 2 av 2.") and _decoded(block).size == (60, 30)
+    assert "velg én side om gangen" in _view(f, pages="1-2")
+
+
+def test_pages_on_single_page_image_is_an_error():
+    assert "har bare én side" in _view(SAMPLES / "kvittering.png", pages="2")
 
 
 def test_attachment_that_is_a_document_is_rejected():

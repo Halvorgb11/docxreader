@@ -298,22 +298,24 @@ def query_table(
 # langchain-anthropic gjør blokkene om til Claudes bilde- og dokumentblokker.
 # Da ser/leser modellen selve filen – vi trenger ingen PDF- eller bildeleser.
 @tool(parse_docstring=True)
-def view_file(path: str, attachment: str = "") -> str | list[dict]:
+def view_file(path: str, attachment: str = "", pages: str = "") -> str | list[dict]:
     """Se på en PDF eller et bilde: filen sendes direkte til deg, så du kan
     lese PDF-en (tekst, tabeller, figurer) eller se bildet selv.
 
     Støttede filtyper: PDF (.pdf) og bilder (.png, .jpg, .jpeg, .gif, .webp,
     .tif, .tiff, .bmp) – også som vedlegg i en e-post (.eml, .msg) med
     attachment. Bruk read_document for Word, Excel, PowerPoint og tekst.
-    En PDF koster mange tokens (ca. 1500–3000 per side); bruk den når svaret
-    trolig står i filen.
+    En PDF koster mange tokens (ca. 1500–3000 per side), så maks 20 sider per
+    kall: les større PDF-er i deler med pages ("1-20", "21-40"). Svaret sier
+    hvor mange sider PDF-en har.
 
     Args:
         path: Filsti til PDF-en eller bildet, eller til e-posten som har det som vedlegg.
         attachment: Når path er en e-post: navnet på vedlegget, f.eks. "skisse.png" eller "Tilbud 2026-117.eml > kontrakt.pdf".
+        pages: Sidene som skal sendes, f.eks. "3", "1-20", "21-" (til slutten) eller "1,4,7-9". Tomt = alle (maks 20). For flersidige TIFF-bilder: én side, f.eks. "2".
     """
     try:
-        name, block, note = load_media(path, attachment)
+        name, block, note = load_media(path, attachment, pages)
     except DocumentError as e:
         return f"Feil: {e}"
     return [{"type": "text", "text": f"Innholdet i '{name}' følger.{note}"}, block]

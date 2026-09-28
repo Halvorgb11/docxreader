@@ -96,7 +96,7 @@ def _attachment_tables(path: str, attachment: str) -> list[Table]:
             raise DocumentError(str(e).replace(str(temp_file), found.name)) from e
 
 
-def load_media(path: str, attachment: str = "") -> tuple[str, dict, str]:
+def load_media(path: str, attachment: str = "", pages: str = "") -> tuple[str, dict, str]:
     """En PDF eller et bilde – en fil, eller et vedlegg i en e-post – som
     (navn, LangChain-innholdsblokk, merknad). Brukes av view_file."""
     file = Path(path)
@@ -111,7 +111,7 @@ def load_media(path: str, attachment: str = "") -> tuple[str, dict, str]:
         name, data = found.name, found.data
     else:
         name, data = file.name, file.read_bytes()
-    block, note = media.media_block(name, data)
+    block, note = media.media_block(name, data, pages)
     return name, block, note
 
 
