@@ -37,6 +37,7 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - `scripts/make_sample_docx.py`, `make_large_sample_docx.py`, `make_sample_pptx.py` – lager testfilene på nytt. `retningslinjer.md` er skrevet for hånd.
 - `.env.example` – mal for `.env` (API-nøkkel).
 - `.claude/skills/` – prosjektspesifikke skills. Hver skill ligger i egen mappe med en `SKILL.md`. Egne skills legges direkte her.
+  - `ny-filleser/` – egen skill: oppskrift for å legge til en ny filtype (`/ny-filleser xlsx`), med maler i `templates/` for leser og test. Hold den i takt med konvensjonene under.
 - `.agents/skills/` – skills installert med `npx skills` (felles for flere AI-agenter). Symlenket inn i `.claude/skills/`.
 - `.gitignore` – holder `.env`, virtuelle miljøer og cache utenfor git.
 - `skills-lock.json` – låsfil for skills installert med `npx skills`.
@@ -70,7 +71,7 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - .docx har ingen sider; struktur hentes fra avsnittsstiler (`Title`, `Heading N`, `List Bullet`, `List Number`) og gjøres om til markdown.
 - Fallgruve: `doc.paragraphs` og `doc.tables` er separate lister. Bruk `doc.iter_inner_content()` for avsnitt og tabeller i riktig rekkefølge.
 - **Leser-kontrakt:** `load(path: Path) -> (list[Block], metatekst)`. Kast `DocumentError` ved ødelagt fil. Filsjekk og filtype-valg gjøres i `load_document`, ikke i leseren.
-- **Ny filtype – oppskrift:** 1) `readers/<format>.py` med `load()`, 2) legg filendelsen i `READERS`, 3) nevn filendelsen i docstringen til ALLE fire verktøy (`test_every_supported_file_type_is_mentioned_in_every_tool` sjekker det), 4) testfil i `samples/` (helst via skript i `scripts/`) + `tests/test_<format>.py`, 5) oppdater CLAUDE.md og README. Passer formatet dårlig i overskrift/seksjon-modellen (f.eks. regneark), lag heller egne verktøy.
+- **Ny filtype – oppskrift** (utførlig i skillen `ny-filleser`): 1) `readers/<format>.py` med `load()`, 2) legg filendelsen i `READERS`, 3) nevn filendelsen i docstringen til ALLE fire verktøy (`test_every_supported_file_type_is_mentioned_in_every_tool` sjekker det), 4) testfil i `samples/` (helst via skript i `scripts/`) + `tests/test_<format>.py`, 5) oppdater CLAUDE.md og README. Passer formatet dårlig i overskrift/seksjon-modellen (f.eks. regneark), lag heller egne verktøy.
 - Få generelle verktøy fremfor ett sett per filtype: modellen velger ut fra beskrivelser, og mange nesten like verktøy gir feilvalg.
 - `Block`: `markdown`, `words`, `heading_level` (0 = ikke overskrift, 1 = `#`, 2 = `##` …), `is_table`.
 - Word: topp-/bunntekst i metateksten, `Title` → `#`, `Heading N` → N+1 `#`, lister → `-`/`1.`, tabeller → markdown-tabeller (første rad = overskrift).
@@ -90,4 +91,5 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - 2026-09-27: Initialiserte git og opprettet privat GitHub-repo `Halvorgb11/docxreader`.
 - 2026-09-27: Fjernet `read_pdf`, `pypdf` og `samples/rapport.pdf`.
 - 2026-09-28: Flermålsanalyse av filtyper (relevans 40 %, enkelhet 30 %, utvidbarhet 30 %): xlsx 4,4 > pptx 3,7 > csv 3,6 > md/txt 3,3 = e-post 3,3 > json/xml 2,9 > html 2,6 > odt 2,3 > epub/rtf 1,9.
+- 2026-09-28: Laget skillen `.claude/skills/ny-filleser` for å legge til filtyper på en ensartet måte.
 - 2026-09-28: Omstrukturert til `blocks.py` + `readers/`; `read_docx`/`docx_outline`/`read_docx_section`/`search_docx` erstattet av generelle `read_document`/`document_outline`/`read_section`/`search_document`. Lagt til .md, .txt og .pptx.
