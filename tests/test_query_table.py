@@ -143,6 +143,23 @@ def test_calculate_respects_operator_precedence_and_chains():
     assert "| 2 | 635.25 |" in result  # (1250.5 + 20) / 2
 
 
+def test_calculate_with_parentheses_and_sign():
+    result = q(CSV, calculate=["X = -(Beløp - 1000) * 2", "Y = ((Beløp + 10)) / 2"], columns=["X", "Y"], limit=1)
+    assert "| 2 | -501 | 630.25 |" in result
+
+
+def test_calculate_column_name_with_parentheses_and_hyphen(tmp_path):
+    f = tmp_path / "a.csv"
+    f.write_text("Beløp (kr);Pris-per-stk\n100;3\n")
+    result = q(str(f), calculate=["T = (Beløp (kr) + Pris-per-stk) * 2", "D = Pris-per-stk - 1"], columns=["T", "D"])
+    assert "| 2 | 206 | 2 |" in result
+
+
+def test_calculate_partial_column_names_inside_parentheses():
+    result = q(XLSX, sheet="Transaksjoner", calculate=["M = (Beløp + 100) * 1.25"], columns=["M"], limit=1)
+    assert "| 2 | 6553.75 |" in result  # (5143 + 100) * 1.25
+
+
 def test_calculated_column_can_be_filtered_sorted_and_summed():
     result = q(XLSX, sheet="Oversikt", calculate=["Over = Forbruk - Budsjett"], where=["Over > 0"], aggregate="sum", value_column="Over")
     assert "| Alle | 1 | 350000.50 |" in result
@@ -155,7 +172,10 @@ def test_calculate_empty_or_invalid_values_give_empty_cell():
 
 @pytest.mark.parametrize("expression, message", [
     ("bare tekst", "forstår ikke beregningen"),
-    ("X = Beløp * (2 + 1)", "parenteser støttes ikke"),
+    ("X = (Beløp + 1", "mangler )"),
+    ("X = Beløp + 1)", "for mange )"),
+    ("X = Beløp *", "mangler et tall eller en kolonne"),
+    ("X = * Beløp", "uventet '*'"),
     ("X = Finnesikke * 2", "fant ingen entydig kolonne"),
 ])
 def test_calculate_errors(expression, message):

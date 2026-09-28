@@ -264,7 +264,7 @@ def query_table(
     Args:
         path: Filsti til .xlsx- eller .csv-filen, for eksempel "samples/budsjett.xlsx".
         attachment: Når path er en e-post (.eml/.msg): navnet på regneark- eller CSV-vedlegget, f.eks. "tilbud.xlsx". Vedlegg i en videresendt e-post: "Tilbud 2026-117.eml > data.csv".
-        calculate: Nye kolonner regnet ut før alt annet, på formen "Navn = uttrykk" med kolonner og tall og + - * / (mellomrom rundt operatorene, ingen parenteser), f.eks. "Sum = Antall * Pris per stk". De nye kolonnene kan brukes i where, sort_by, columns og value_column.
+        calculate: Nye kolonner regnet ut før alt annet, på formen "Navn = uttrykk" med kolonner, tall, + - * / og parenteser (mellomrom rundt operatorene), f.eks. "Sum = Antall * Pris per stk" eller "Med mva = (Pris + Frakt) * 1.25". De nye kolonnene kan brukes i where, sort_by, columns og value_column.
         sheet: Arknavn i Excel, f.eks. "Transaksjoner". Har arket flere tabeller, bruk tabellnavnet fra document_outline, f.eks. "Kvartal – Faktisk Q1" eller bare "Faktisk Q1". Kan være tomt når filen bare har én tabell (alltid for CSV).
         where: Betingelser som alle må stemme, på formen "Kolonne operator verdi". Operatorer: = != > < >= <= og ~ (inneholder). Alternativer i samme betingelse skilles med " OR ", f.eks. "Avdeling = IT OR Avdeling = HR". Tall sammenlignes som tall (også "1 250,50", "1,250.50" og "kr 500"), datoer (2026-09-28) og tekst som tekst, uten hensyn til store/små bokstaver.
         sort_by: Kolonnen det skal sorteres etter.

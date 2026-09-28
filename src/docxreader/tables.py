@@ -274,61 +274,149 @@ def _single_filter(table: Table, condition: str):
 #
 # "Sum = Antall * Pris per stk" lager en ny kolonne "Sum". Vi bruker IKKE
 # Pythons eval(): uttrykket kommer fra modellen, og eval kunne kjørt hva som
-# helst. I stedet deler vi uttrykket i tall/kolonner og + - * / selv.
+# helst. I stedet har vi en liten parser som bare forstår tall, kolonner,
+# + - * / og parenteser:
+#
+#   1. Kolonnenavn byttes ut med plassholdere (lengste navn først). Da kan et
+#      navn selv inneholde parenteser eller bindestrek: "Beløp (kr)".
+#   2. Resten deles i biter ("tokens"): tall, kolonner, operatorer, parenteser.
+#   3. Bitene settes sammen til et tre med vanlig regnerekkefølge
+#      (parenteser først, så * og /, så + og -), og treet regnes ut per rad.
 
-OPERATOR = re.compile(r"\s([+\-*/])\s")  # operatorer MÅ ha mellomrom rundt seg
+PLACEHOLDER = "\x00"  # tegn som aldri står i et uttrykk
 
 
-def _calculate(values: list[float], operators: list[str]) -> float:
-    """Regn ut med vanlig regnerekkefølge: først * og /, så + og -."""
-    values, operators = values[:], operators[:]
+def _tokenize(table: Table, formula: str) -> list[tuple[str, object]]:
+    text = formula
+    for index in sorted(range(len(table.header)), key=lambda i: -len(table.header[i])):
+        pattern = re.compile(re.escape(table.header[index]), re.IGNORECASE)
+        text = pattern.sub(f"{PLACEHOLDER}{index}{PLACEHOLDER}", text)
+
+    tokens: list[tuple[str, object]] = []
     i = 0
-    while i < len(operators):
-        if operators[i] in "*/":
-            a, b = values[i], values[i + 1]
-            values[i : i + 2] = [a * b if operators[i] == "*" else a / b]
-            del operators[i]
-        else:
+
+    def binary_position() -> bool:  # står vi etter et tall/en kolonne/")"?
+        return bool(tokens) and tokens[-1][0] in ("tall", "kolonne", ")")
+
+    while i < len(text):
+        char = text[i]
+        if char.isspace():
             i += 1
-    result = values[0]
-    for op, value in zip(operators, values[1:]):
-        result = result + value if op == "+" else result - value
-    return result
+        elif char == PLACEHOLDER:
+            end = text.index(PLACEHOLDER, i + 1)
+            tokens.append(("kolonne", int(text[i + 1 : end])))
+            i = end + 1
+        elif char in "()":
+            tokens.append((char, None))
+            i += 1
+        elif char in "+-*/" and (binary_position() or char in "+-"):
+            # Binær operator ("A - B"), eller fortegn foran noe ("-5", "-(A + B)").
+            tokens.append(("op" if binary_position() else "fortegn", char))
+            i += 1
+        elif char in "*/":  # * eller / uten noe foran
+            raise DocumentError(f"forstår ikke uttrykket '{formula}' (uventet '{char}').")
+        else:
+            # Et tall eller et (delvis) kolonnenavn. Det slutter ved parentes,
+            # plassholder, eller en operator med mellomrom foran – så
+            # bindestreken i "Pris-per-stk" ikke leses som minus.
+            start = i
+            while i < len(text) and text[i] not in "()" + PLACEHOLDER:
+                if text[i] in "+-*/" and i > start and text[i - 1].isspace():
+                    break
+                i += 1
+            operand = text[start:i].strip()
+            number = parse_number(operand)
+            tokens.append(("tall", number) if number is not None else ("kolonne", find_column(table, operand)))
+    return tokens
+
+
+def _parse(tokens: list, formula: str):
+    """Tokens -> tre. uttrykk = ledd (+|- ledd)* ; ledd = faktor (*|/ faktor)* ;
+    faktor = tall | kolonne | fortegn faktor | ( uttrykk )."""
+    position = 0
+
+    def fail(reason: str):
+        raise DocumentError(f"forstår ikke uttrykket '{formula}' ({reason}).")
+
+    def peek():
+        return tokens[position] if position < len(tokens) else (None, None)
+
+    def take():
+        nonlocal position
+        position += 1
+        return tokens[position - 1]
+
+    def factor():
+        kind, value = peek()
+        if kind in ("tall", "kolonne"):
+            return take()
+        if kind == "fortegn":
+            take()
+            inner = factor()
+            return ("op", "-", ("tall", 0.0), inner) if value == "-" else inner
+        if kind == "(":
+            take()
+            inner = expression()
+            if peek()[0] != ")":
+                fail("mangler )")
+            take()
+            return inner
+        fail("mangler et tall eller en kolonne" if kind is None else f"uventet '{value or kind}'")
+
+    def term():
+        node = factor()
+        while peek()[0] == "op" and peek()[1] in "*/":
+            node = ("op", take()[1], node, factor())
+        return node
+
+    def expression():
+        node = term()
+        while peek()[0] == "op" and peek()[1] in "+-":
+            node = ("op", take()[1], node, term())
+        return node
+
+    tree = expression()
+    if position < len(tokens):
+        fail("for mange )" if tokens[position][0] == ")" else f"uventet '{tokens[position][1] or tokens[position][0]}'")
+    return tree
+
+
+def _evaluate(node, cells: list[str]) -> float | None:
+    """Regn ut treet for én rad. None hvis en verdi mangler/ikke er tall, eller ved deling på 0."""
+    kind = node[0]
+    if kind == "tall":
+        return node[1]
+    if kind == "kolonne":
+        return parse_number(cells[node[1]])
+    _, op, left, right = node
+    a, b = _evaluate(left, cells), _evaluate(right, cells)
+    if a is None or b is None or (op == "/" and b == 0):
+        return None
+    return {"+": a + b, "-": a - b, "*": a * b, "/": a / b if b else 0}[op]
 
 
 def add_calculated_column(table: Table, expression: str) -> Table:
     """Ny tabell med én ekstra kolonne regnet ut fra "Navn = uttrykk".
 
-    Uttrykket består av kolonnenavn og tall med + - * / mellom (med mellomrom
-    rundt, så "Pris-per-stk" ikke leses som en minus). Mangler en verdi, eller
-    er den ikke et tall, blir cellen tom. Deling på 0 gir også tom celle.
+    Uttrykket kan ha kolonnenavn, tall, + - * / og parenteser, f.eks.
+    "Total = (Antall * Pris) * 1.25". Operatorer mellom (delvise) kolonnenavn
+    trenger mellomrom rundt seg, så "Pris-per-stk" ikke leses som en minus.
+    Mangler en verdi, eller er den ikke et tall, blir cellen tom. Deling på 0
+    gir også tom celle.
     """
     name, sep, formula = expression.partition("=")
     name, formula = name.strip(), formula.strip()
     if not sep or not name or not formula:
         raise DocumentError(
             f"forstår ikke beregningen '{expression}'. Bruk 'Navn = uttrykk', "
-            "f.eks. 'Sum = Antall * Pris' eller 'Uten mva = Beløp / 1.25'."
+            "f.eks. 'Sum = Antall * Pris' eller 'Med mva = (Pris + Frakt) * 1.25'."
         )
-    pieces = OPERATOR.split(f" {formula} ")
-    operand_texts, operators = [t.strip() for t in pieces[0::2]], pieces[1::2]
-    if "(" in formula or ")" in formula:
-        raise DocumentError("parenteser støttes ikke i calculate; del opp i flere beregninger.")
-
-    # Hver operand er enten et tall eller en kolonne.
-    operands = []
-    for text in operand_texts:
-        number = parse_number(text)
-        operands.append(("tall", number) if number is not None else ("kolonne", find_column(table, text)))
+    tree = _parse(_tokenize(table, formula), formula)
 
     rows = []
     for n, cells in table.rows:
-        values = [value if kind == "tall" else parse_number(cells[value]) for kind, value in operands]
-        try:
-            result = "" if None in values else format_number(_calculate(values, operators))
-        except ZeroDivisionError:
-            result = ""
-        rows.append((n, [*cells, result]))
+        value = _evaluate(tree, cells)
+        rows.append((n, [*cells, "" if value is None else format_number(value)]))
     return Table(table.name, [*table.header, name], rows, table.hidden, table.comments,
                  table.sheet, table.title, table.notes)
 
