@@ -155,6 +155,11 @@ def test_section_path_picks_the_right_one(tmp_path):
     assert "Nord" not in result
 
 
+def test_section_path_allows_partial_parent():
+    result = read_section.invoke({"path": str(LARGE_DOCX), "heading": "nord > status"})
+    assert "Ingrid Solberg" in result
+
+
 def test_section_missing_file_returns_error_text():
     result = read_section.invoke({"path": "finnes_ikke.docx", "heading": "x"})
     assert result.startswith("Feil:")

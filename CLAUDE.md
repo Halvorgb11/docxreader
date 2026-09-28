@@ -1,9 +1,9 @@
 # docxreader
 
 ## Om prosjektet
-LangChain-verktøy (`@tool`) som lar en Claude-agent lese dokumenter. Støtter nå .docx, .pptx, .md og .txt.
+LangChain-verktøy (`@tool`) som lar en Claude-agent lese dokumenter. Støtter nå .docx, .pptx, .xlsx, .md og .txt.
 
-**Langsiktig mål (2026-09-28):** repoet skal være en meny/et lager av fillesere for mange filtyper. Ny filtype = ny modul i `readers/` + én linje i `READERS`. Prioritert rekkefølge videre (fra flermålsanalyse 2026-09-28): Excel (.xlsx) + CSV med egne tabellverktøy, deretter e-post (.eml/.msg). PDF og bilder utelates fordi Claude API leser dem direkte.
+**Langsiktig mål (2026-09-28):** repoet skal være en meny/et lager av fillesere for mange filtyper. Ny filtype = ny modul i `readers/` + én linje i `READERS`. Prioritert rekkefølge videre (fra flermålsanalyse 2026-09-28): egne tabellverktøy for Excel (spørring/filtrering/summering) + CSV, deretter e-post (.eml/.msg). PDF og bilder utelates fordi Claude API leser dem direkte.
 
 Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser PDF direkte, men ikke .docx. `read_pdf` ble fjernet samme dag (finnes i git-historikken, commit `94f61b4`).
 
@@ -20,6 +20,7 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - `langchain-anthropic` – Claude API som modell.
 - `python-docx` – lesing av .docx (importeres som `import docx`).
 - `python-pptx` – lesing av .pptx (importeres som `import pptx`).
+- `openpyxl` – lesing av .xlsx.
 - `python-dotenv` – leser `ANTHROPIC_API_KEY` fra `.env`.
 - `pytest` (dev) – tester.
 
@@ -30,11 +31,11 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
   - `tools.py` – de fire generelle `@tool`-verktøyene `read_document`, `document_outline`, `read_section`, `search_document` + `ALL_TOOLS`. Ren Python, testbar uten Claude.
   - `blocks.py` – filtype-uavhengig: `Block`, `DocumentError`, `outline`, `section_end`, `find_section`, `heading_paths`, `block_paths`, `search_units`, `render`, `rows_to_markdown`/`table_block`, `heading()`, `count_words`.
   - `readers/__init__.py` – menyen `READERS` (filendelse → `load`-funksjon) og `load_document(path)`.
-  - `readers/word.py` (.docx), `readers/powerpoint.py` (.pptx), `readers/text.py` (.md via `load_markdown`, .txt via `load_plain`).
+  - `readers/word.py` (.docx), `readers/powerpoint.py` (.pptx), `readers/excel.py` (.xlsx), `readers/text.py` (.md via `load_markdown`, .txt via `load_plain`).
   - `agent.py` = Claude + `create_agent` (`build_agent()`, `ask()`), `__init__.py` = CLI (`main`, `print_messages`).
-- `tests/` – pytest-tester: `test_readers.py` (meny + felles), `test_word.py`, `test_powerpoint.py`, `test_text.py`.
-- `samples/` – testfiler: `prosjektplan.docx` (lite), `arsrapport.docx` (~8000 ord, plantede fakta), `salgsmote.pptx` (faktum i talenotater: Havbruk Vest AS), `retningslinjer.md`.
-- `scripts/make_sample_docx.py`, `make_large_sample_docx.py`, `make_sample_pptx.py` – lager testfilene på nytt. `retningslinjer.md` er skrevet for hånd.
+- `tests/` – pytest-tester: `test_readers.py` (meny + felles), `test_word.py`, `test_powerpoint.py`, `test_excel.py`, `test_text.py`.
+- `samples/` – testfiler: `prosjektplan.docx` (lite), `arsrapport.docx` (~8000 ord, plantede fakta), `salgsmote.pptx` (faktum i talenotater: Havbruk Vest AS), `budsjett.xlsx` (kommentar i Oversikt!C3: Nordic Data AS; Transaksjoner rad 180: Fjellsikring AS 1 250 000 – bevisst selvmotsigende, 250 rader, skjult ark), `retningslinjer.md`.
+- `scripts/make_sample_docx.py`, `make_large_sample_docx.py`, `make_sample_pptx.py`, `make_sample_xlsx.py` – lager testfilene på nytt. `retningslinjer.md` er skrevet for hånd.
 - `.env.example` – mal for `.env` (API-nøkkel).
 - `.claude/skills/` – prosjektspesifikke skills. Hver skill ligger i egen mappe med en `SKILL.md`. Egne skills legges direkte her.
   - `ny-filleser/` – egen skill: oppskrift for å legge til en ny filtype (`/ny-filleser xlsx`), med maler i `templates/` for leser og test. Hold den i takt med konvensjonene under.
@@ -60,8 +61,10 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 6. [x] Store filer: `docx_outline` + `read_docx_section` + grense (`MAX_WORDS`) i `read_docx`.
 7. [x] Søk: `search_docx`.
 8. [x] Flere filtyper: omstrukturert til `blocks.py` + `readers/` + generelle verktøy; lagt til .md/.txt og .pptx.
-9. [ ] Neste filtyper: Excel (.xlsx) + CSV (egne tabellverktøy: ark, områder, filtrering), deretter e-post.
-10. [ ] Ideer: samtaleminne (checkpointer) + `ContextEditingMiddleware`, liste dokumenter i en mappe, kommentarer/sporede endringer, RAG ved mange dokumenter.
+9. [x] Excel (.xlsx)-leser (via skillen `ny-filleser`).
+10. [ ] Egne tabellverktøy for regneark (Claude måtte lese alle 250 radene for å finne største IT-betaling) + CSV. Avklar verktøydesign med brukeren først.
+11. [ ] E-post (.eml/.msg).
+12. [ ] Ideer: samtaleminne (checkpointer) + `ContextEditingMiddleware`, liste dokumenter i en mappe, kommentarer/sporede endringer, RAG ved mange dokumenter.
 
 ## Konvensjoner
 - Verktøy defineres med `@tool(parse_docstring=True)` og Google-stil docstring (`Args:`), slik at argumentbeskrivelsene havner i skjemaet modellen ser.
@@ -76,10 +79,11 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - `Block`: `markdown`, `words`, `heading_level` (0 = ikke overskrift, 1 = `#`, 2 = `##` …), `is_table`.
 - Word: topp-/bunntekst i metateksten, `Title` → `#`, `Heading N` → N+1 `#`, lister → `-`/`1.`, tabeller → markdown-tabeller (første rad = overskrift).
 - PowerPoint: hvert lysbilde = `## Lysbilde N: <tittel>` (nivå 2). Former sorteres etter plassering (topp, venstre), grupper leses rekursivt, punkter får innrykk etter `p.level`, diagrammer blir `[Diagram: tittel]`, bilder hoppes over, talenotater blir `Talenotater: …`. Metatekst: tittel + antall lysbilder.
+- Excel: hvert ark = `## Ark: <navn>` (+ ` (skjult)`), innhold som tabell med ekstra første kolonne `Rad` (Excel-radnummer). Første ikke-tomme rad = overskriftsrad. Over `ROWS_PER_PART = 100` datarader deles arket i `### Rad 2–101` osv., med overskriftsraden gjentatt. Formler: lastes både med `data_only=True` (lagret resultat) og uten; mangler resultat (fil aldri åpnet i Excel) vises formelen. Datoer uten klokkeslett → `2026-09-28`, heltall-float → heltall. Tomme rader og tomme kolonner til høyre fjernes; tomme ark nevnes bare i metateksten. Cellekommentarer → `Kommentarer:\n- C3: …`. Kjent begrensning: flere tabeller eller en tittel over tabellen i samme ark gir feil overskriftsrad; diagrammer hoppes over; `MAX_WORDS` undervurderer token-mengden i talltabeller.
 - Markdown: `#`-overskrifter starter alltid ny blokk (også uten tom linje foran); `#` i kodeblokker er ikke overskrifter; avsnitt over flere linjer slås sammen. `.txt` har ingen overskrifter. Tekst leses som UTF-8 (med BOM), ellers cp1252.
 - Tittel i overskriftsstier: finnes det nøyaktig ÉN nivå 1-overskrift, regnes den som tittel og utelates fra stiene; ellers er `#`-overskrifter med.
 - Seksjon = overskrift + alt fram til neste overskrift på samme eller høyere nivå (`_section_end`).
-- `read_section` tar overskrift eller sti med ` > ` (f.eks. `"Økonomi > Status"`); eksakt treff før delvis, uavhengig av store/små bokstaver. Tvetydig eller ukjent overskrift → `Feil:` med liste over alternativer.
+- `read_section` tar overskrift eller sti med ` > ` (f.eks. `"Økonomi > Status"`); eksakt treff (alle deler) før delvis treff (alle deler, også foreldre: `"Transaksjoner > Rad 2–101"` finner `Ark: Transaksjoner > …`), uavhengig av store/små bokstaver. Tvetydig eller ukjent overskrift → `Feil:` med liste over alternativer.
 - `MAX_WORDS = 3000` (i `tools.py`): over dette gir `read_document` innholdsfortegnelsen, og `read_section` gir underoverskriftene. Tester endrer den med `monkeypatch`.
 - `search_document`: alle søkeord (delstrenger, uavhengig av store/små bokstaver) må finnes i samme bit – setning (avsnitt), listepunkt eller tabellrad (`search_units`). Treff grupperes under `[overskriftssti]` (`block_paths`); tabelltreff vises med overskriftsraden. Maks `MAX_SEARCH_HITS = 15`.
 - Interne feil kastes som `DocumentError` og gjøres om til `Feil: …` i verktøyene.
@@ -92,4 +96,5 @@ Kursendring 2026-09-27: fokus flyttet fra PDF til .docx, fordi Claude API leser 
 - 2026-09-27: Fjernet `read_pdf`, `pypdf` og `samples/rapport.pdf`.
 - 2026-09-28: Flermålsanalyse av filtyper (relevans 40 %, enkelhet 30 %, utvidbarhet 30 %): xlsx 4,4 > pptx 3,7 > csv 3,6 > md/txt 3,3 = e-post 3,3 > json/xml 2,9 > html 2,6 > odt 2,3 > epub/rtf 1,9.
 - 2026-09-28: Laget skillen `.claude/skills/ny-filleser` for å legge til filtyper på en ensartet måte.
+- 2026-09-28: Lagt til Excel-leser (.xlsx) med skillen `ny-filleser`. Delvis treff tillatt også i foreldre-deler av overskriftsstier.
 - 2026-09-28: Omstrukturert til `blocks.py` + `readers/`; `read_docx`/`docx_outline`/`read_docx_section`/`search_docx` erstattet av generelle `read_document`/`document_outline`/`read_section`/`search_document`. Lagt til .md, .txt og .pptx.

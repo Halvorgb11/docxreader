@@ -135,12 +135,16 @@ def find_section(blocks: list[Block], wanted_heading: str) -> int:
 
     def matches(path: list[str], exact: bool) -> bool:
         path = [p.casefold() for p in path]
-        last = path[-1] == wanted[-1] if exact else wanted[-1] in path[-1]
-        if not last:
+
+        def same(w: str, p: str) -> bool:
+            return w == p if exact else w in p
+
+        if not same(wanted[-1], path[-1]):
             return False
         # De øvrige delene må finnes blant foreldrene, i riktig rekkefølge.
+        # ("Transaksjoner > Rad 2–101" finner "Ark: Transaksjoner > Rad 2–101".)
         parents = iter(path[:-1])
-        return all(any(w == p for p in parents) for w in wanted[:-1])
+        return all(any(same(w, p) for p in parents) for w in wanted[:-1])
 
     for exact in (True, False):
         hits = [i for i, path in paths.items() if matches(path, exact)]

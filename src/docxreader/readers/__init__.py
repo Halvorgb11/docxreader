@@ -13,11 +13,12 @@ Legge til en ny filtype:
 from pathlib import Path
 
 from docxreader.blocks import Block, DocumentError
-from docxreader.readers import powerpoint, text, word
+from docxreader.readers import excel, powerpoint, text, word
 
 READERS = {
     ".docx": word.load,
     ".pptx": powerpoint.load,
+    ".xlsx": excel.load,
     ".md": text.load_markdown,
     ".txt": text.load_plain,
 }

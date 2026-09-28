@@ -56,6 +56,9 @@ Fallgruver vi har truffet:
 - **Tegnkoding** for tekstformater: `utf-8-sig`, så `cp1252` (se `readers/text.py`).
 - **Skjult innhold** som ofte har svaret: talenotater, topp-/bunntekst, kommentarer, alt-tekst.
 - Tittel i overskriftsstier: nøyaktig ÉN nivå 1-overskrift regnes som tittel.
+- Test stier slik modellen sannsynligvis skriver dem, også uten prefiks (`"Transaksjoner > Rad 2–101"` for `Ark: Transaksjoner`).
+- Talltabeller er token-tette: `MAX_WORDS` teller ord, ikke tokens. Del store tabeller i biter (se `readers/excel.py`).
+- Se på verktøykallene i agentkjøringen: leser Claude alt for å svare på noe som egentlig er en spørring (summer, største, filtrer), trengs det kanskje et eget verktøy.
 
 ## 3. Registrer i menyen
 
