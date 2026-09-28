@@ -4,6 +4,9 @@ import datetime
 from email.message import EmailMessage
 from pathlib import Path
 
+import pytest
+
+from docxreader.readers import calendar
 from docxreader.tools import document_outline, read_document, read_section, search_document
 
 SAMPLE = str(Path(__file__).parent.parent / "samples" / "invitasjon.ics")
@@ -21,7 +24,7 @@ def _ics(tmp_path, body: str) -> str:
 
 def test_meta_and_one_section_per_event():
     outline = document_outline.invoke({"path": SAMPLE})
-    assert outline.startswith("Kalender med 3 hendelser (invitasjon): Serverprosjektet.")
+    assert outline.startswith("Kalender med 4 hendelser (invitasjon): Serverprosjektet.")
     assert "## Hendelse: Leverandørmøte med Nordic Data  (~" in outline
     assert "## Hendelse: Serverinstallasjon  (~" in outline
 
@@ -49,7 +52,53 @@ def test_all_day_event_end_is_exclusive():
 def test_utc_time_and_recurrence():
     result = _section("Oppfølgingsmøte")
     assert "- Start: 2026-12-01 13:00 (UTC)" in result
-    assert "- Gjentas: FREQ=MONTHLY;COUNT=3" in result
+    assert "- Gjentas: månedlig, 3 ganger" in result
+    assert "- Datoer: 2026-12-01 13:00, 2027-01-01 13:00, 2027-02-01 13:00" in result
+
+
+def test_weekly_recurrence_with_until_in_utc_and_exception():
+    result = _section("Statusmøte")
+    assert "- Gjentas: ukentlig på mandag og torsdag, til og med 2026-10-31" in result
+    assert "2026-10-12 09:00, 2026-10-19 09:00" in result  # 15. oktober (EXDATE) mangler
+    assert "2026-10-15" not in result.split("Datoer:")[1].split("\n")[0]
+
+
+@pytest.mark.parametrize("rule, expected", [
+    ("FREQ=DAILY", "daglig"),
+    ("FREQ=WEEKLY;INTERVAL=2;BYDAY=FR", "hver 2. uke på fredag"),
+    ("FREQ=MONTHLY;BYDAY=-1FR;COUNT=6", "månedlig på siste fredag, 6 ganger"),
+    ("FREQ=MONTHLY;BYDAY=1MO,3MO", "månedlig på første mandag og tredje mandag"),
+    ("FREQ=MONTHLY;BYMONTHDAY=15", "månedlig den 15."),
+    ("FREQ=YEARLY;UNTIL=20301231", "årlig, til og med 2030-12-31"),
+])
+def test_rule_descriptions(rule, expected):
+    assert calendar._describe_rule(rule) == expected
+
+
+def _event(tmp_path, lines: str) -> str:
+    return read_document.invoke({"path": _ics(tmp_path, "BEGIN:VEVENT\nSUMMARY:X\n" + lines + "\nEND:VEVENT")})
+
+
+def test_endless_recurrence_shows_ten_dates(tmp_path):
+    result = _event(tmp_path, "DTSTART:20260105T080000\nRRULE:FREQ=WEEKLY")
+    assert result.count("2026-") == 11  # start + 10 datoer
+    assert "… (fortsetter uten slutt)" in result
+
+
+def test_long_finite_recurrence_shows_total(tmp_path):
+    result = _event(tmp_path, "DTSTART:20260101T080000\nRRULE:FREQ=DAILY;COUNT=30")
+    assert "… (30 totalt)" in result
+
+
+def test_all_day_recurrence_shows_dates_only(tmp_path):
+    result = _event(tmp_path, "DTSTART;VALUE=DATE:20261224\nRRULE:FREQ=YEARLY;COUNT=2")
+    assert "- Datoer: 2026-12-24, 2027-12-24" in result
+
+
+def test_invalid_rule_falls_back_to_raw_text(tmp_path):
+    result = _event(tmp_path, "DTSTART:20260101T080000\nRRULE:FREQ=HVERGANG")
+    assert "- Gjentas: FREQ=HVERGANG (regelen kunne ikke tolkes)" in result
+    assert result.count("Gjentas") == 1
 
 
 def test_planted_fact_is_searchable():
@@ -91,7 +140,7 @@ def test_invitation_inside_eml_is_read_as_ics(tmp_path):
     f.write_bytes(m.as_bytes())
     result = read_document.invoke({"path": str(f)})
     assert "Vedlegg: invitasjon.ics" in result
-    assert "## Vedlegg: invitasjon.ics\n\nKalender med 3 hendelser" in result
+    assert "## Vedlegg: invitasjon.ics\n\nKalender med 4 hendelser" in result
     assert "### Hendelse: Leverandørmøte med Nordic Data" in result  # flyttet under vedlegget
 
 

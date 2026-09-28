@@ -14,10 +14,16 @@ Fallgruver i formatet:
 - Tidspunkt: 20261008T100000 med TZID (lokal tid), 20261008T080000Z (UTC)
   eller VALUE=DATE:20261008 (hele dagen).
 - Heldagshendelser har EKSKLUSIV slutt: DTEND er dagen ETTER siste dag.
+- Gjentakelser (RRULE, f.eks. "FREQ=WEEKLY;BYDAY=MO") regnes om til konkrete
+  datoer med python-dateutil, minus unntak (EXDATE), og beskrives på norsk.
 """
 
 import datetime
+import itertools
+import re
 from pathlib import Path
+
+from dateutil.rrule import rruleset, rrulestr
 
 from docxreader.blocks import Block, DocumentError, count_words, heading, shift_headings
 from docxreader.readers.text import markdown_blocks, read_text
@@ -78,6 +84,61 @@ def _parse_time(value: str, params: dict[str, str]) -> tuple[datetime.date | dat
     return moment, moment.strftime("%Y-%m-%d %H:%M") + (f" ({zone})" if zone else "")
 
 
+MAX_OCCURRENCES = 10
+FREQUENCIES = {"DAILY": ("daglig", "dag"), "WEEKLY": ("ukentlig", "uke"), "MONTHLY": ("månedlig", "måned"),
+               "YEARLY": ("årlig", "år"), "HOURLY": ("hver time", "time")}
+DAYS = {"MO": "mandag", "TU": "tirsdag", "WE": "onsdag", "TH": "torsdag", "FR": "fredag", "SA": "lørdag", "SU": "søndag"}
+ORDINALS = {1: "første", 2: "andre", 3: "tredje", 4: "fjerde", 5: "femte", -1: "siste", -2: "nest siste"}
+
+
+def _describe_rule(rule: str) -> str:
+    """"FREQ=MONTHLY;BYDAY=-1FR;COUNT=3" -> "månedlig på siste fredag, 3 ganger"."""
+    parts = dict(p.split("=", 1) for p in rule.upper().split(";") if "=" in p)
+    frequency = parts.get("FREQ", "")
+    word, unit = FREQUENCIES.get(frequency, (frequency.lower(), ""))
+    interval = int(parts.get("INTERVAL", "1") or 1)
+    text = f"hver {interval}. {unit}" if interval > 1 and unit else word
+    if "BYDAY" in parts:
+        days = []
+        for day in parts["BYDAY"].split(","):
+            m = re.fullmatch(r"([+-]?\d+)?([A-Z]{2})", day)
+            if not m:
+                continue
+            name = DAYS.get(m.group(2), m.group(2))
+            days.append(f"{ORDINALS.get(int(m.group(1)), m.group(1) + '.')} {name}" if m.group(1) else name)
+        text += " på " + (", ".join(days[:-1]) + " og " + days[-1] if len(days) > 1 else days[0]) if days else ""
+    if "BYMONTHDAY" in parts:
+        text += f" den {parts['BYMONTHDAY'].replace(',', '., ')}."
+    if "COUNT" in parts:
+        text += f", {parts['COUNT']} ganger"
+    if "UNTIL" in parts:
+        until, until_text = _parse_time(parts["UNTIL"], {})
+        text += f", til og med {until_text.split(' ')[0] if until else parts['UNTIL']}"
+    return text
+
+
+def _occurrences(rule: str, start, whole_day: bool, exdates: list, rdates: list) -> str:
+    """Konkrete datoer for en gjentakelse (maks MAX_OCCURRENCES vist)."""
+    first = datetime.datetime.combine(start, datetime.time()) if whole_day else start
+    # dateutil godtar ikke UNTIL i UTC ("…Z") når start er uten tidssone; vi
+    # regner uten tidssoner (tidspunktene vises i samme sone som starten).
+    rule = re.sub(r"(UNTIL=\d{8}(T\d{6})?)Z", r"\1", rule, flags=re.IGNORECASE)
+    dates = rruleset()
+    dates.rrule(rrulestr(rule, dtstart=first))
+    for day in exdates:
+        dates.exdate(datetime.datetime.combine(day, datetime.time()) if not isinstance(day, datetime.datetime) else day)
+    for day in rdates:
+        dates.rdate(datetime.datetime.combine(day, datetime.time()) if not isinstance(day, datetime.datetime) else day)
+
+    shown = list(itertools.islice(dates, MAX_OCCURRENCES + 1))
+    fmt = "%Y-%m-%d" if whole_day else "%Y-%m-%d %H:%M"
+    text = ", ".join(d.strftime(fmt) for d in shown[:MAX_OCCURRENCES])
+    if len(shown) > MAX_OCCURRENCES:
+        endless = "COUNT" not in rule.upper() and "UNTIL" not in rule.upper()
+        text += " … (fortsetter uten slutt)" if endless else f" … ({dates.count()} totalt)"
+    return text
+
+
 def _person(value: str, params: dict[str, str]) -> str:
     address = value.removeprefix("mailto:").removeprefix("MAILTO:")
     name = params.get("CN", "")
@@ -89,9 +150,15 @@ def _person(value: str, params: dict[str, str]) -> str:
 def _event_blocks(props: list[tuple[str, dict, str]]) -> list[Block]:
     first = {}
     attendees = []
+    exdates, rdates = [], []  # unntak og ekstra datoer for gjentakelser (kan stå på flere linjer)
     for name, params, value in props:
         if name == "ATTENDEE":
             attendees.append(_person(value, params))
+        elif name in ("EXDATE", "RDATE"):
+            for item in value.split(","):
+                moment, _ = _parse_time(item, params)
+                if moment is not None:
+                    (exdates if name == "EXDATE" else rdates).append(moment)
         else:
             first.setdefault(name, (params, value))
 
@@ -109,9 +176,18 @@ def _event_blocks(props: list[tuple[str, dict, str]]) -> list[Block]:
         lines.append(f"Start: {start_text}" + (" (hele dagen)" if whole_day else ""))
     if end_text and end_text != start_text:
         lines.append(f"Slutt: {end_text}")
-    for label, name in [("Sted", "LOCATION"), ("Status", "STATUS"), ("Gjentas", "RRULE")]:
+    for label, name in [("Sted", "LOCATION"), ("Status", "STATUS")]:
         if text(name):
             lines.append(f"{label}: {text(name)}")
+    if "RRULE" in first:
+        rule = first["RRULE"][1]
+        try:  # regn ut alt før noe legges til, så en feil ikke gir halve linjer
+            described = [f"Gjentas: {_describe_rule(rule)}"]
+            if start is not None:
+                described.append(f"Datoer: {_occurrences(rule, start, whole_day, exdates, rdates)}")
+            lines.extend(described)
+        except (ValueError, TypeError):
+            lines.append(f"Gjentas: {rule} (regelen kunne ikke tolkes)")
     if "ORGANIZER" in first:
         lines.append(f"Arrangør: {_person(first['ORGANIZER'][1], first['ORGANIZER'][0])}")
     if attendees:
