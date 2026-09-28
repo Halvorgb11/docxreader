@@ -18,7 +18,15 @@ def q(path, **kwargs) -> str:
 
 @pytest.mark.parametrize("text, expected", [
     ("1250", 1250), ("-3", -3), ("1250.5", 1250.5), ("1 250,50", 1250.5),
-    ("8 430,00", 8430), ("2026-09-01", None), ("IT", None), ("", None),
+    ("8\u00a0430,00", 8430), ("2026-09-01", None), ("IT", None), ("", None),
+    # engelsk og tysk/norsk med tusenskille, flere like skilletegn
+    ("1,250,000.50", 1250000.5), ("1.250.000,50", 1250000.5), ("1,250.5", 1250.5),
+    ("1.250.000", 1250000), ("1,250,000", 1250000),
+    # valuta, prosent, norsk ",-", typografisk minus
+    ("kr 1 250", 1250), ("1 250 kr", 1250), ("NOK 99,90", 99.9), ("$1,250.00", 1250),
+    ("25 %", 25), ("1 250,-", 1250), ("\u2212500", -500),
+    # ett enkelt skilletegn = desimaltegn; datoer og ugyldig gruppering er ikke tall
+    ("1,250", 1.25), ("12.05.2026", None), ("1,2,3", None), ("1.2,3", None),
 ])
 def test_parse_number_handles_norwegian_numbers(text, expected):
     assert parse_number(text) == expected
@@ -74,6 +82,30 @@ def test_avg_min_max():
     assert "| Alle | 7 | 450 |" in q(CSV, aggregate="min", value_column="Beløp")
 
 
+def test_or_alternatives_within_one_condition():
+    result = q(CSV, where=["Reisemål = Bergen OR Reisemål = Oslo"], aggregate="count")
+    assert "| Alle | 3 |" in result
+
+
+def test_or_combined_with_and():
+    # (Kategori = Fly ELLER Kategori = Tog) OG Ansatt ~ kari
+    result = q(CSV, where=["Kategori = Fly OR Kategori = Tog", "Ansatt ~ kari"], aggregate="count")
+    assert "| Alle | 2 |" in result
+
+
+def test_sum_of_numbers_stored_as_text_in_different_formats():
+    result = q(XLSX, sheet="Faktisk", aggregate="sum", value_column="faktisk")
+    assert result.startswith("'Kvartal – Faktisk Q1'")
+    assert "| Alle | 3 | 2525000.50 |" in result
+
+
+def test_table_in_sheet_with_several_tables():
+    assert "| 8 | HR | 100000 |" in q(XLSX, sheet="Kvartal – Budsjett Q1")
+    result = q(XLSX, sheet="Kvartal")
+    assert result.startswith("Feil:")
+    assert "passer flere tabeller: Kvartal – Budsjett Q1, Kvartal – Faktisk Q1" in result
+
+
 def test_limit_is_capped():
     result = q(XLSX, sheet="Transaksjoner", limit=10_000)
     assert "Viser 100 av 250 rader" in result
@@ -85,7 +117,7 @@ def test_no_matching_rows():
 
 @pytest.mark.parametrize("kwargs, message", [
     ({"path": XLSX}, "flere ark"),
-    ({"path": XLSX, "sheet": "Finnes ikke"}, "Ark med innhold: Oversikt, Transaksjoner, Hjelpetall"),
+    ({"path": XLSX, "sheet": "Finnes ikke"}, "Ark med innhold: Oversikt, Transaksjoner, Hjelpetall, Kvartal – Budsjett Q1"),
     ({"path": CSV, "where": ["Beløpet > 5"]}, "Kolonner: Dato, Ansatt"),
     ({"path": CSV, "where": ["bare tekst"]}, "forstår ikke betingelsen"),
     ({"path": CSV, "aggregate": "sum"}, "trenger value_column"),

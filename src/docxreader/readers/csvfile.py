@@ -17,7 +17,7 @@ from pathlib import Path
 
 from docxreader.blocks import Block
 from docxreader.readers.text import read_text
-from docxreader.tables import Table, make_table, table_blocks
+from docxreader.tables import Table, split_tables, table_blocks
 
 DELIMITERS = [";", ",", "\t", "|"]
 DELIMITER_NAMES = {";": "semikolon", ",": "komma", "\t": "tabulator", "|": "loddrett strek"}
@@ -40,7 +40,8 @@ def _read(path: Path) -> tuple[Table, str]:
         for number, cells in enumerate(records, start=1)
         if any(cell.strip() for cell in cells)
     ]
-    return make_table("Tabell", rows), delimiter
+    # Tomme linjer skiller ikke tabeller i CSV, men en tittellinje øverst gjenkjennes.
+    return split_tables("Tabell", rows, split_on_gaps=False)[0], delimiter
 
 
 def load_tables(path: Path) -> list[Table]:

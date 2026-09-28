@@ -240,6 +240,8 @@ def query_table(
 
     Støttede filtyper: Excel (.xlsx) og CSV (.csv). Bruk dette for spørsmål som
     "største beløp", "alle rader der Avdeling er IT" eller "sum per avdeling".
+    Bruk den også til å regne ut summer og snitt i stedet for å regne i hodet –
+    verktøyet regner eksakt, også med tall i ulike formater.
     Første rad i tabellen er kolonnenavnene; document_outline viser ark og
     kolonner. Svaret har med radnummeret ("Rad") fra filen.
     Eksempler:
@@ -249,8 +251,8 @@ def query_table(
 
     Args:
         path: Filsti til .xlsx- eller .csv-filen, for eksempel "samples/budsjett.xlsx".
-        sheet: Arknavn i Excel, f.eks. "Transaksjoner". Kan være tomt når filen bare har én tabell (alltid for CSV).
-        where: Betingelser som alle må stemme, på formen "Kolonne operator verdi". Operatorer: = != > < >= <= og ~ (inneholder). Tall sammenlignes som tall, datoer (2026-09-28) og tekst som tekst, uten hensyn til store/små bokstaver.
+        sheet: Arknavn i Excel, f.eks. "Transaksjoner". Har arket flere tabeller, bruk tabellnavnet fra document_outline, f.eks. "Kvartal – Faktisk Q1" eller bare "Faktisk Q1". Kan være tomt når filen bare har én tabell (alltid for CSV).
+        where: Betingelser som alle må stemme, på formen "Kolonne operator verdi". Operatorer: = != > < >= <= og ~ (inneholder). Alternativer i samme betingelse skilles med " OR ", f.eks. "Avdeling = IT OR Avdeling = HR". Tall sammenlignes som tall (også "1 250,50", "1,250.50" og "kr 500"), datoer (2026-09-28) og tekst som tekst, uten hensyn til store/små bokstaver.
         sort_by: Kolonnen det skal sorteres etter.
         descending: True for synkende sortering (største først).
         columns: Kolonnene som skal vises. Tom = alle.

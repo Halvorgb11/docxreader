@@ -11,6 +11,9 @@ Inneholder det Excel-leseren må håndtere:
   rad 180 er en betaling på 1 250 000 kr til Fjellsikring AS.
 - "Tomt": tomt ark.
 - "Hjelpetall": skjult ark.
+- "Kvartal": tittel over arket, to tabeller under hverandre med hver sin tittel,
+  tabell som starter i kolonne B, tom rad midt i en tabell, tall lagret som
+  tekst i engelsk/norsk/valuta-format, og en fotnote nederst.
 """
 
 import datetime
@@ -59,6 +62,24 @@ ws = wb.create_sheet("Hjelpetall")
 ws.append(["Nøkkel", "Verdi"])
 ws.append(["Momssats", 0.25])
 ws.sheet_state = "hidden"
+
+# --- Kvartal: tittel, to tabeller, tom rad i tabell, fotnote, tall som tekst ---
+ws = wb.create_sheet("Kvartal")
+ws["A1"] = "Kvartalsrapport 2026"
+ws["B3"] = "Budsjett Q1"
+for row, (avdeling, belop) in zip([4, 5, 6, 8], [("Avdeling", "Q1 budsjett"), ("Salg", 300000), ("IT", 200000), ("HR", 100000)]):
+    ws.cell(row=row, column=2, value=avdeling)
+    ws.cell(row=row, column=3, value=belop)
+ws["B10"] = "Faktisk Q1"
+for row, values in zip(range(11, 15), [
+    ("Avdeling", "Q1 faktisk", "Kommentar"),
+    ("Salg", "1,250,000.50", "Over plan"),  # engelsk format, lagret som tekst
+    ("IT", "1.180.000,00", "Serverkjøp"),  # norsk/tysk format, lagret som tekst
+    ("HR", "kr 95 000,-", None),
+]):
+    for col, value in enumerate(values, start=2):
+        ws.cell(row=row, column=col, value=value)
+ws["A16"] = "Kilde: regnskapssystemet, hentet 2026-09-28"
 
 OUT.parent.mkdir(exist_ok=True)
 wb.save(OUT)

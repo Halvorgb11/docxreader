@@ -50,3 +50,10 @@ def test_csv_ragged_rows_and_blank_header(tmp_path):
 
 def test_empty_csv(tmp_path):
     assert "ingen tekst" in read_document.invoke({"path": _write(tmp_path, "")})
+
+
+def test_csv_title_line_above_header(tmp_path):
+    f = _write(tmp_path, "Reiser september\nNavn;Beløp\nKari;1 250,50\n")
+    result = read_document.invoke({"path": f})
+    assert "## Tabell\n\nReiser september\n\n| Rad | Navn | Beløp |" in result
+    assert "| 3 | Kari | 1 250,50 |" in result

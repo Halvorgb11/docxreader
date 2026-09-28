@@ -78,4 +78,7 @@ def load_table(path: str, sheet: str = "") -> Table:
         hits = [t for t in tables if (t.name.casefold() == wanted if exact else wanted in t.name.casefold())]
         if len(hits) == 1:
             return hits[0]
+    if len(hits) > 1:
+        options = ", ".join(t.name for t in hits)
+        raise DocumentError(f"'{sheet}' passer flere tabeller: {options}. Oppgi tabellnavnet, f.eks. '{hits[0].name}'.")
     raise DocumentError(f"fant ikke ett entydig ark '{sheet}'. Ark med innhold: {names}.")

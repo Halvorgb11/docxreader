@@ -17,11 +17,14 @@ def _section(heading: str) -> str:
 def test_sheets_become_sections_and_meta_lists_sheets():
     result = read_document.invoke({"path": str(SAMPLE)})
     assert result.startswith(
-        "Arbeidsbok med 4 ark:\n"
+        "Arbeidsbok med 5 ark:\n"
         "- Oversikt: 3 rader; kolonner: Avdeling, Budsjett, Forbruk, Rest, Sist oppdatert\n"
         "- Transaksjoner: 250 rader; kolonner: Dato, Leverandør, Beløp (kr), Avdeling\n"
         "- Tomt: tomt\n"
-        "- Hjelpetall: 1 rader; kolonner: Nøkkel, Verdi"
+        "- Hjelpetall: 1 rader; kolonner: Nøkkel, Verdi\n"
+        "- Kvartal: 2 tabeller\n"
+        "  - Kvartal – Budsjett Q1: 3 rader; kolonner: Avdeling, Q1 budsjett\n"
+        "  - Kvartal – Faktisk Q1: 3 rader; kolonner: Avdeling, Q1 faktisk, Kommentar\n"
     )
     assert "## Ark: Oversikt" in result
     assert "## Ark: Tomt" not in result  # tomme ark er bare nevnt i metateksten
@@ -114,3 +117,63 @@ def test_corrupt_file_returns_error_text(tmp_path):
     result = read_document.invoke({"path": str(bad)})
     assert result.startswith("Feil:")
     assert "ikke en gyldig Excel-fil" in result
+
+
+# --- Oppsett i arket: titler, flere tabeller, fotnoter ------------------------
+
+
+def test_sheet_with_two_tables_titles_and_footnote():
+    result = _section("Kvartal")
+    assert result.startswith("## Ark: Kvartal\n\n### Budsjett Q1\n\nKvartalsrapport 2026 – Budsjett Q1")
+    # Tabellen starter i kolonne B, men den tomme kolonnen A er fjernet.
+    assert "| Rad | Avdeling | Q1 budsjett |" in result
+    assert "| Rad | Avdeling | Q1 faktisk | Kommentar |" in result
+    assert result.endswith("Kilde: regnskapssystemet, hentet 2026-09-28")
+
+
+def test_empty_row_inside_table_does_not_split_it():
+    result = _section("Kvartal > Budsjett Q1")
+    assert "| 6 | IT | 200000 |" in result and "| 8 | HR | 100000 |" in result
+    assert "Faktisk" not in result
+
+
+def _sheet(tmp_path, rows: dict) -> str:
+    wb = Workbook()
+    for coordinate, value in rows.items():
+        wb.active[coordinate] = value
+    f = tmp_path / "a.xlsx"
+    wb.save(f)
+    return str(f)
+
+
+def test_title_row_above_table(tmp_path):
+    f = _sheet(tmp_path, {"A1": "Salgsrapport", "A2": "Navn", "B2": "Salg", "A3": "Kari", "B3": 5})
+    result = read_section.invoke({"path": f, "heading": "Sheet"})
+    assert "Salgsrapport\n\n| Rad | Navn | Salg |" in result
+    assert "| 3 | Kari | 5 |" in result
+
+
+def test_short_header_row_is_not_mistaken_for_title(tmp_path):
+    # "Navn" alene over data (med tall) er overskriftsraden, ikke en tittel.
+    f = _sheet(tmp_path, {"A1": "Navn", "A2": "Kari", "B2": 41})
+    assert "| Rad | Navn | Kolonne 2 |" in read_section.invoke({"path": f, "heading": "Sheet"})
+
+
+def test_one_column_sheet(tmp_path):
+    f = _sheet(tmp_path, {"A1": "Navn", "A2": "Kari", "A3": "Ola"})
+    assert "| Rad | Navn |\n| --- | --- |\n| 2 | Kari |\n| 3 | Ola |" in read_document.invoke({"path": f})
+
+
+def test_comment_belongs_to_the_table_it_is_in(tmp_path):
+    from openpyxl.comments import Comment
+
+    wb = Workbook()
+    ws = wb.active
+    for coordinate, value in {"A1": "Første", "A3": "Navn", "B3": "Alder", "A4": "Kari", "B4": 41,
+                              "A6": "Andre", "A7": "By", "B7": "Innbyggere", "A8": "Bergen", "B8": 290000}.items():
+        ws[coordinate] = value
+    ws["B8"].comment = Comment("Tall fra SSB", "x")
+    f = tmp_path / "a.xlsx"
+    wb.save(f)
+    assert "Kommentarer" not in read_section.invoke({"path": str(f), "heading": "Første"})
+    assert "- B8: Tall fra SSB" in read_section.invoke({"path": str(f), "heading": "Andre"})
