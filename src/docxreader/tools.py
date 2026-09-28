@@ -230,6 +230,8 @@ def search_document(path: str, query: str) -> str:
 def query_table(
     path: str,
     sheet: str = "",
+    attachment: str = "",
+    calculate: list[str] | None = None,
     where: list[str] | None = None,
     sort_by: str = "",
     descending: bool = False,
@@ -242,7 +244,8 @@ def query_table(
     """Spør i en tabell i et regneark eller en CSV-fil: filtrer, sorter, tell og
     summer rader, uten å lese hele tabellen.
 
-    Støttede filtyper: Excel (.xlsx) og CSV (.csv). Bruk dette for spørsmål som
+    Støttede filtyper: Excel (.xlsx) og CSV (.csv) – også som vedlegg i en
+    e-post (.eml, .msg) med attachment. Bruk dette for spørsmål som
     "største beløp", "alle rader der Avdeling er IT" eller "sum per avdeling".
     Bruk den også til å regne ut summer og snitt i stedet for å regne i hodet –
     verktøyet regner eksakt, også med tall i ulike formater.
@@ -252,9 +255,13 @@ def query_table(
     where=["Avdeling = IT"], sort_by="Beløp", descending=True, limit=5
     group_by="Avdeling", aggregate="sum", value_column="Beløp"
     where=["Dato >= 2026-06-01", "Leverandør ~ AS"], aggregate="count"
+    calculate=["Sum = Antall * Pris per stk"], aggregate="sum", value_column="Sum"
+    path="post.eml", attachment="tilbud.xlsx", sort_by="Pris", descending=True
 
     Args:
         path: Filsti til .xlsx- eller .csv-filen, for eksempel "samples/budsjett.xlsx".
+        attachment: Når path er en e-post (.eml/.msg): navnet på regneark- eller CSV-vedlegget, f.eks. "tilbud.xlsx". Vedlegg i en videresendt e-post: "Tilbud 2026-117.eml > data.csv".
+        calculate: Nye kolonner regnet ut før alt annet, på formen "Navn = uttrykk" med kolonner og tall og + - * / (mellomrom rundt operatorene, ingen parenteser), f.eks. "Sum = Antall * Pris per stk". De nye kolonnene kan brukes i where, sort_by, columns og value_column.
         sheet: Arknavn i Excel, f.eks. "Transaksjoner". Har arket flere tabeller, bruk tabellnavnet fra document_outline, f.eks. "Kvartal – Faktisk Q1" eller bare "Faktisk Q1". Kan være tomt når filen bare har én tabell (alltid for CSV).
         where: Betingelser som alle må stemme, på formen "Kolonne operator verdi". Operatorer: = != > < >= <= og ~ (inneholder). Alternativer i samme betingelse skilles med " OR ", f.eks. "Avdeling = IT OR Avdeling = HR". Tall sammenlignes som tall (også "1 250,50", "1,250.50" og "kr 500"), datoer (2026-09-28) og tekst som tekst, uten hensyn til store/små bokstaver.
         sort_by: Kolonnen det skal sorteres etter.
@@ -266,9 +273,10 @@ def query_table(
         value_column: Kolonnen sum/avg/min/max regnes på.
     """
     try:
-        table = load_table(path, sheet)
+        table = load_table(path, sheet, attachment)
         return query(
             table,
+            calculate=calculate or [],
             where=where or [],
             sort_by=sort_by,
             descending=descending,

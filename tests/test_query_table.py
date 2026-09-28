@@ -127,3 +127,64 @@ def test_errors_explain_what_to_do(kwargs, message):
     result = query_table.invoke(kwargs)
     assert result.startswith("Feil:")
     assert message in result
+
+
+# --- calculate: beregnede kolonner --------------------------------------------
+
+
+def test_calculate_new_column_from_two_columns():
+    result = q(XLSX, sheet="Oversikt", calculate=["Differanse = Budsjett - Forbruk"], columns=["Avdeling", "Differanse"])
+    assert "| 2 | Salg | 250000 |" in result
+    assert "| 3 | IT | -350000.50 |" in result
+
+
+def test_calculate_respects_operator_precedence_and_chains():
+    result = q(CSV, calculate=["X = Beløp + 10 * 2", "Y = X / 2"], columns=["Y"], limit=1)
+    assert "| 2 | 635.25 |" in result  # (1250.5 + 20) / 2
+
+
+def test_calculated_column_can_be_filtered_sorted_and_summed():
+    result = q(XLSX, sheet="Oversikt", calculate=["Over = Forbruk - Budsjett"], where=["Over > 0"], aggregate="sum", value_column="Over")
+    assert "| Alle | 1 | 350000.50 |" in result
+
+
+def test_calculate_empty_or_invalid_values_give_empty_cell():
+    result = q(CSV, calculate=["Null = Beløp / 0", "Dobbel = Beløp * 2"], where=["Ansatt ~ Lise"], columns=["Null", "Dobbel"])
+    assert "| 9 |  |  |" in result  # Lise har tomt beløp
+
+
+@pytest.mark.parametrize("expression, message", [
+    ("bare tekst", "forstår ikke beregningen"),
+    ("X = Beløp * (2 + 1)", "parenteser støttes ikke"),
+    ("X = Finnesikke * 2", "fant ingen entydig kolonne"),
+])
+def test_calculate_errors(expression, message):
+    result = q(CSV, calculate=[expression])
+    assert result.startswith("Feil:") and message in result
+
+
+# --- attachment: tabeller i e-postvedlegg -------------------------------------
+
+EML = str(SAMPLES / "tilbud.eml")
+
+
+def test_query_attachment_with_calculation():
+    result = q(EML, attachment="tilbud.xlsx", calculate=["Sum = Antall * Pris per stk"], aggregate="sum", value_column="Sum")
+    assert result.startswith("'Tilbud'")
+    assert "| Alle | 2 | 192000 |" in result
+
+
+def test_attachment_name_prefers_table_files_when_ambiguous():
+    # "tilbud" passer både tilbud.xlsx og "Tilbud 2026-117.eml".
+    assert "| 2 | Nordic Data AS | Server R750 | 4 | 45000 |" in q(EML, attachment="tilbud")
+
+
+@pytest.mark.parametrize("kwargs, message", [
+    ({"path": EML, "attachment": "avtaleutkast.docx"}, "er ikke et regneark eller en CSV-fil"),
+    ({"path": EML, "attachment": "finnes.xlsx"}, "fant ikke vedlegget 'finnes.xlsx'. Vedlegg: tilbud.xlsx"),
+    ({"path": EML, "attachment": "Tilbud 2026-117.eml > x.csv"}, "fant ikke vedlegget 'x.csv'. Vedlegg: (ingen)"),
+    ({"path": CSV, "attachment": "x.xlsx"}, "attachment kan bare brukes når path er en e-post"),
+])
+def test_attachment_errors(kwargs, message):
+    result = query_table.invoke(kwargs)
+    assert result.startswith("Feil:") and message in result

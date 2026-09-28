@@ -13,6 +13,7 @@ Legge til en ny filtype (se også skillen .claude/skills/ny-filleser):
 3. Nevn filtypen i docstringene i tools.py (en test sjekker at du ikke glemmer det).
 """
 
+import tempfile
 from pathlib import Path
 
 from docxreader.blocks import Block, DocumentError
@@ -69,15 +70,43 @@ def load_document(path: str) -> tuple[list[Block], str]:
     return _run(reader, file)
 
 
-def load_table(path: str, sheet: str = "") -> Table:
-    """Én tabell fra et regneark eller en CSV-fil.
+def _attachment_tables(path: str, attachment: str) -> list[Table]:
+    """Tabellene i et regneark-/CSV-vedlegg i en e-post."""
+    file = Path(path)
+    if not file.is_file():
+        raise DocumentError(f"fant ingen fil på '{path}'.")
+    if file.suffix.lower() not in (".eml", ".msg"):
+        raise DocumentError("attachment kan bare brukes når path er en e-post (.eml eller .msg).")
+    found = mail.find_attachment(_run(mail.load_mail, file), attachment, prefer=tuple(TABLE_READERS))
+    reader = TABLE_READERS.get(Path(found.name).suffix.lower())
+    if reader is None or found.data is None:
+        raise DocumentError(
+            f"vedlegget '{found.name}' er ikke et regneark eller en CSV-fil "
+            f"(støttet: {', '.join(TABLE_READERS)}). Les det med read_section i stedet."
+        )
+    # Leserne tar en filsti, så vedlegget skrives til en midlertidig fil.
+    with tempfile.TemporaryDirectory() as folder:
+        temp_file = Path(folder) / found.name
+        temp_file.write_bytes(found.data)
+        try:
+            return _run(reader, temp_file)
+        except DocumentError as e:
+            raise DocumentError(str(e).replace(str(temp_file), found.name)) from e
+
+
+def load_table(path: str, sheet: str = "", attachment: str = "") -> Table:
+    """Én tabell fra et regneark eller en CSV-fil – eller fra et slikt vedlegg
+    i en e-post (`attachment`).
 
     `sheet` velger ark (uten hensyn til store/små bokstaver, og "Ark: " foran
     er lov, siden modellen ofte kopierer overskriften fra innholdsfortegnelsen).
     Tomt `sheet` går bare når filen har ett ark med innhold.
     """
-    reader, file = _pick_reader(path, TABLE_READERS)
-    tables = [t for t in _run(reader, file) if t.header]
+    if attachment:
+        tables = [t for t in _attachment_tables(path, attachment) if t.header]
+    else:
+        reader, file = _pick_reader(path, TABLE_READERS)
+        tables = [t for t in _run(reader, file) if t.header]
     if not tables:
         raise DocumentError(f"'{path}' inneholder ingen tabelldata.")
 

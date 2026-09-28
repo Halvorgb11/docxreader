@@ -107,7 +107,7 @@ def _mail_from_eml(message) -> Mail:
     )
 
 
-def load_eml(path: Path) -> tuple[list[Block], str]:
+def _load_eml_mail(path: Path) -> Mail:
     raw = path.read_bytes()
     if b"\x00" in raw[:1024]:
         raise DocumentError(f"'{path}' er ikke en gyldig e-postfil (binærdata).")
@@ -116,7 +116,11 @@ def load_eml(path: Path) -> tuple[list[Block], str]:
     message = email.message_from_bytes(raw, policy=email.policy.default)
     if not (message["From"] or message["Subject"] or message["Date"]):
         raise DocumentError(f"'{path}' ser ikke ut som en e-post (mangler Fra, Emne og Dato).")
-    return _mail_blocks(_mail_from_eml(message))
+    return _mail_from_eml(message)
+
+
+def load_eml(path: Path) -> tuple[list[Block], str]:
+    return _mail_blocks(_load_eml_mail(path))
 
 
 # --- .msg (Outlook) --------------------------------------------------------
@@ -187,15 +191,53 @@ def _mail_from_msg(msg) -> Mail:
     )
 
 
-def load_msg(path: Path) -> tuple[list[Block], str]:
+def _load_msg_mail(path: Path) -> Mail:
     try:
         msg = extract_msg.openMsg(str(path))
     except (ExMsgBaseException, OSError):
         raise DocumentError(f"'{path}' er ikke en gyldig Outlook-fil (.msg) (ødelagt eller feil format).")
     try:
-        return _mail_blocks(_mail_from_msg(msg))
+        return _mail_from_msg(msg)  # leser alt (også vedlegg) før filen lukkes
     finally:
         msg.close()
+
+
+def load_msg(path: Path) -> tuple[list[Block], str]:
+    return _mail_blocks(_load_msg_mail(path))
+
+
+def load_mail(path: Path) -> Mail:
+    """Les en .eml- eller .msg-fil til en Mail (uten å lage blokker)."""
+    return _load_msg_mail(path) if path.suffix.lower() == ".msg" else _load_eml_mail(path)
+
+
+def find_attachment(mail: Mail, wanted: str, prefer: tuple[str, ...] = ()) -> Attachment:
+    """Finn et vedlegg ved navn. Uten hensyn til store/små bokstaver; eksakt
+    treff før delvis. Vedlegg i en videresendt e-post nås med " > ":
+    "Tilbud 2026-117.eml > data.csv". Passer flere, velges det ene (om bare
+    ett) med en filendelse i `prefer`, f.eks. (".xlsx", ".csv") for query_table."""
+    parts = [p.strip() for p in wanted.split(">") if p.strip()]
+    if not parts:
+        raise DocumentError("vedleggsnavnet kan ikke være tomt.")
+    current = mail
+    for number, part in enumerate(parts):
+        names = [a.name for a in current.attachments]
+        hits = [a for a in current.attachments if a.name.casefold() == part.casefold()]
+        hits = hits or [a for a in current.attachments if part.casefold() in a.name.casefold()]
+        last = number == len(parts) - 1
+        preferred = [a for a in hits if Path(a.name).suffix.lower() in prefer]
+        if last and len(hits) > 1 and len(preferred) == 1:
+            hits = preferred
+        if len(hits) != 1:
+            problem = "flere vedlegg passer" if hits else "fant ikke vedlegget"
+            raise DocumentError(f"{problem} '{part}'. Vedlegg: {', '.join(names) or '(ingen)'}.")
+        found = hits[0]
+        if last:
+            return found
+        if found.mail is None:
+            raise DocumentError(f"'{found.name}' er ikke en e-post, så den har ingen vedlegg.")
+        current = found.mail
+    raise AssertionError("unreachable")
 
 
 # --- Tråder: dele teksten i meldinger ----------------------------------------

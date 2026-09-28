@@ -270,6 +270,69 @@ def _single_filter(table: Table, condition: str):
     return keep
 
 
+# --- Beregnede kolonner ------------------------------------------------------
+#
+# "Sum = Antall * Pris per stk" lager en ny kolonne "Sum". Vi bruker IKKE
+# Pythons eval(): uttrykket kommer fra modellen, og eval kunne kjørt hva som
+# helst. I stedet deler vi uttrykket i tall/kolonner og + - * / selv.
+
+OPERATOR = re.compile(r"\s([+\-*/])\s")  # operatorer MÅ ha mellomrom rundt seg
+
+
+def _calculate(values: list[float], operators: list[str]) -> float:
+    """Regn ut med vanlig regnerekkefølge: først * og /, så + og -."""
+    values, operators = values[:], operators[:]
+    i = 0
+    while i < len(operators):
+        if operators[i] in "*/":
+            a, b = values[i], values[i + 1]
+            values[i : i + 2] = [a * b if operators[i] == "*" else a / b]
+            del operators[i]
+        else:
+            i += 1
+    result = values[0]
+    for op, value in zip(operators, values[1:]):
+        result = result + value if op == "+" else result - value
+    return result
+
+
+def add_calculated_column(table: Table, expression: str) -> Table:
+    """Ny tabell med én ekstra kolonne regnet ut fra "Navn = uttrykk".
+
+    Uttrykket består av kolonnenavn og tall med + - * / mellom (med mellomrom
+    rundt, så "Pris-per-stk" ikke leses som en minus). Mangler en verdi, eller
+    er den ikke et tall, blir cellen tom. Deling på 0 gir også tom celle.
+    """
+    name, sep, formula = expression.partition("=")
+    name, formula = name.strip(), formula.strip()
+    if not sep or not name or not formula:
+        raise DocumentError(
+            f"forstår ikke beregningen '{expression}'. Bruk 'Navn = uttrykk', "
+            "f.eks. 'Sum = Antall * Pris' eller 'Uten mva = Beløp / 1.25'."
+        )
+    pieces = OPERATOR.split(f" {formula} ")
+    operand_texts, operators = [t.strip() for t in pieces[0::2]], pieces[1::2]
+    if "(" in formula or ")" in formula:
+        raise DocumentError("parenteser støttes ikke i calculate; del opp i flere beregninger.")
+
+    # Hver operand er enten et tall eller en kolonne.
+    operands = []
+    for text in operand_texts:
+        number = parse_number(text)
+        operands.append(("tall", number) if number is not None else ("kolonne", find_column(table, text)))
+
+    rows = []
+    for n, cells in table.rows:
+        values = [value if kind == "tall" else parse_number(cells[value]) for kind, value in operands]
+        try:
+            result = "" if None in values else format_number(_calculate(values, operators))
+        except ZeroDivisionError:
+            result = ""
+        rows.append((n, [*cells, result]))
+    return Table(table.name, [*table.header, name], rows, table.hidden, table.comments,
+                 table.sheet, table.title, table.notes)
+
+
 # --- Spørringen ----------------------------------------------------------------
 
 
@@ -281,6 +344,7 @@ def _sort_key(cell: str):
 
 def query(
     table: Table,
+    calculate: list[str],
     where: list[str],
     sort_by: str,
     descending: bool,
@@ -290,6 +354,10 @@ def query(
     aggregate: str | None,
     value_column: str,
 ) -> str:
+    # Beregnede kolonner først, så de kan brukes i where, sort_by og aggregate.
+    for expression in calculate:
+        table = add_calculated_column(table, expression)
+
     rows = table.rows
     for condition in where:
         keep = make_filter(table, condition)
