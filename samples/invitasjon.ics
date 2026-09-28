@@ -1,0 +1,39 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Fjellbekk AS//Testkalender//NO
+METHOD:REQUEST
+X-WR-CALNAME:Serverprosjektet
+BEGIN:VEVENT
+UID:leverandormote-2026@fjellbekk.example
+SUMMARY:Leverandørmøte med Nordic Data
+DTSTART;TZID=Europe/Oslo:20261008T100000
+DTEND;TZID=Europe/Oslo:20261008T113000
+LOCATION:Rom Fjorden\, 3. etasje
+ORGANIZER;CN=Per Æsøy:mailto:per@fjellbekk.example
+ATTENDEE;CN=Kari Nordmann;PARTSTAT=ACCEPTED:mailto:kari@fjellbekk.example
+ATTENDEE;CN="Hansen: Ola";PARTSTAT=TENTATIVE:mailto:ola@fjellbekk.example
+ATTENDEE;CN=Salg Nordic Data;PARTSTAT=NEEDS-ACTION:mailto:salg@nordicdata.example
+DESCRIPTION:Gjennomgang av tilbud 2026-117.\n\nParkering i P-hus Vest\, kod
+ e 4471. Ta med tegningene av rack B3.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Påminnelse som ikke skal vises
+TRIGGER:-PT15M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:installasjon-2026@fjellbekk.example
+SUMMARY:Serverinstallasjon
+DTSTART;VALUE=DATE:20261123
+DTEND;VALUE=DATE:20261125
+LOCATION:Serverrommet
+DESCRIPTION:Nordic Data installerer fire servere. Serverrommet er stengt.
+END:VEVENT
+BEGIN:VEVENT
+UID:oppfolging-2026@fjellbekk.example
+SUMMARY:Oppfølgingsmøte (Teams)
+DTSTART:20261201T130000Z
+DTEND:20261201T133000Z
+RRULE:FREQ=MONTHLY;COUNT=3
+END:VEVENT
+END:VCALENDAR

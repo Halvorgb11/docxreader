@@ -55,6 +55,11 @@ class Mail:
     subject: str = ""
     text: str = ""  # brødteksten som markdown-lignende tekst
     attachments: list[Attachment] = field(default_factory=list)
+    # Bare for Outlook-avtaler og møteinnkallinger (.msg):
+    start: str = ""
+    end: str = ""
+    location: str = ""
+    organizer: str = ""
 
 
 def _format_date(value) -> str:
@@ -82,7 +87,8 @@ def _mail_from_eml(message) -> Mail:
         text = html_to_text(content) if body.get_content_type() == "text/html" else content
 
     attachments = []
-    for number, part in enumerate(message.iter_attachments(), start=1):
+    attachment_parts = list(message.iter_attachments())
+    for number, part in enumerate(attachment_parts, start=1):
         content_type = part.get_content_type()
         # Bilder som er "innebygd" i HTML-teksten (logoer o.l.) er ikke vedlegg.
         if content_type.startswith("image/") and part["Content-ID"] and part.get_content_disposition() != "attachment":
@@ -96,6 +102,14 @@ def _mail_from_eml(message) -> Mail:
             continue
         name = _safe_name(part.get_filename(), content_type, number)
         attachments.append(Attachment(name, data=part.get_payload(decode=True) or b""))
+
+    # Møteinnkallinger (Outlook, Google) legger kalenderdata som en egen del
+    # INNI selve meldingen (text/calendar), ikke som vedlegg. Vi tar den med
+    # som "invitasjon.ics", så kalenderleseren leser den.
+    for part in message.walk():
+        if part.get_content_type() == "text/calendar" and not any(part is p for p in attachment_parts):
+            name = _safe_name(part.get_filename() or "invitasjon.ics", "text/calendar", 0)
+            attachments.append(Attachment(name, data=part.get_payload(decode=True) or b""))
 
     return Mail(
         sender=str(message["From"] or ""),
@@ -189,6 +203,10 @@ def _mail_from_msg(msg) -> Mail:
         subject=_clean(_field(msg, "subject")),
         text=text,
         attachments=attachments,
+        start=_format_date(_field(msg, "startDate")),
+        end=_format_date(_field(msg, "endDate")),
+        location=_clean(_field(msg, "location")),
+        organizer=_clean(_field(msg, "organizer")),
     )
 
 
@@ -325,9 +343,10 @@ def _split_thread(text: str) -> list[tuple[str, str]]:
 
 
 def _meta(mail: Mail) -> str:
-    lines = ["E-post"]
+    lines = ["Møteinnkalling (Outlook)" if mail.start else "E-post"]
     for label, value in [("Fra", mail.sender), ("Til", mail.to), ("Kopi", mail.cc),
-                         ("Dato", mail.date), ("Emne", mail.subject)]:
+                         ("Dato", mail.date), ("Emne", mail.subject), ("Start", mail.start),
+                         ("Slutt", mail.end), ("Sted", mail.location), ("Arrangør", mail.organizer)]:
         if value:
             lines.append(f"{label}: {' '.join(str(value).split())}")
     if mail.attachments:

@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 
 from docxreader.blocks import Block, DocumentError
-from docxreader.readers import csvfile, excel, mail, media, powerpoint, text, word
+from docxreader.readers import calendar, csvfile, excel, mail, media, powerpoint, text, word
 from docxreader.tables import Table
 
 READERS = {
@@ -27,6 +27,7 @@ READERS = {
     ".csv": csvfile.load,
     ".eml": mail.load_eml,
     ".msg": mail.load_msg,
+    ".ics": calendar.load,
     ".md": text.load_markdown,
     ".txt": text.load_plain,
 }

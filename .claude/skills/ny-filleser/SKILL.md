@@ -58,6 +58,7 @@ Fallgruver vi har truffet:
 - Tittel i overskriftsstier: nøyaktig ÉN nivå 1-overskrift regnes som tittel.
 - Test stier slik modellen sannsynligvis skriver dem, også uten prefiks (`"Transaksjoner > Rad 2–101"` for `Ark: Transaksjoner`).
 - Talltabeller er token-tette: `MAX_WORDS` teller ord, ikke tokens. Del store tabeller i biter (se `readers/excel.py`).
+- **Formater Claude leser selv** (PDF, bilder): ikke lag en tekstleser – legg filendelsen i `readers/media.py` (`MIME_TYPES`), så sender `view_file` filen som innholdsblokk.
 - **Beholderformater** (e-post, zip …): send innholdet videre til `READERS` i stedet for å lese det selv, og flytt overskriftene ned (se `_nest` i `readers/mail.py`). Bruk bare filnavnet, aldri stien fra filen, når du skriver midlertidige filer. Begrens nøsting og størrelse.
 - Kan biblioteket ikke lage testfiler (f.eks. `.msg`)? Test oversettelsen med et falskt objekt via `monkeypatch`, og si tydelig fra til brukeren at ekte filer ikke er prøvd.
 - Se på verktøykallene i agentkjøringen: leser Claude alt for å svare på noe som egentlig er en spørring (summer, største, filtrer), trengs det kanskje et eget verktøy.

@@ -31,7 +31,9 @@ SYSTEM_PROMPT = """Du er en assistent som svarer på spørsmål om dokumenter.
 Bruk verktøyene dine til å lese filene brukeren viser til. Svar på norsk,
 og oppgi hvor informasjonen står (overskrift, lysbilde, ark og rad, eller
 del av e-posten/vedlegg) når det er relevant.
-Hvis du ikke finner svaret i dokumentet, si det i stedet for å gjette."""
+Hvis du ikke finner svaret i dokumentet, si det i stedet for å gjette.
+Regn ikke i hodet med tall fra regneark eller CSV (også vedlegg): bruk
+query_table med calculate/aggregate, så blir summer og produkter eksakte."""
 
 
 def build_agent():
