@@ -2,13 +2,15 @@
 
 import pytest
 
-from docxreader.readers import READERS
-from docxreader.tools import ALL_TOOLS, read_document
+from docxreader.readers import READERS, TABLE_READERS
+from docxreader.tools import ALL_TOOLS, query_table, read_document
+
+DOCUMENT_TOOLS = [t for t in ALL_TOOLS if t is not query_table]
 
 
 def test_tools_have_names_and_argument_descriptions():
     assert [t.name for t in ALL_TOOLS] == [
-        "read_document", "document_outline", "read_section", "search_document",
+        "read_document", "document_outline", "read_section", "search_document", "query_table",
     ]
     # parse_docstring=True legger Args-beskrivelsen inn i skjemaet modellen ser.
     for t in ALL_TOOLS:
@@ -19,8 +21,14 @@ def test_tools_have_names_and_argument_descriptions():
 def test_every_supported_file_type_is_mentioned_in_every_tool(suffix):
     # Modellen vet bare det som står i beskrivelsene. Legger du til en filtype
     # i READERS uten å nevne den i docstringene, feiler denne testen.
-    for t in ALL_TOOLS:
+    for t in DOCUMENT_TOOLS:
         assert suffix in t.description, f"{t.name} nevner ikke {suffix}"
+
+
+@pytest.mark.parametrize("suffix", TABLE_READERS)
+def test_every_table_file_type_is_mentioned_in_query_table(suffix):
+    assert suffix in query_table.description
+    assert suffix in READERS  # tabellfiler skal også kunne leses som dokumenter
 
 
 def test_unsupported_file_type_lists_supported_types(tmp_path):

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from docxreader.readers import excel
+from docxreader import tables
 from docxreader.tools import document_outline, read_document, read_section, search_document
 
 SAMPLE = Path(__file__).parent.parent / "samples" / "budsjett.xlsx"
@@ -17,8 +17,11 @@ def _section(heading: str) -> str:
 def test_sheets_become_sections_and_meta_lists_sheets():
     result = read_document.invoke({"path": str(SAMPLE)})
     assert result.startswith(
-        "Arbeidsbok med 4 ark: Oversikt (3 rader), Transaksjoner (250 rader), "
-        "Tomt (tomt), Hjelpetall (1 rader)."
+        "Arbeidsbok med 4 ark:\n"
+        "- Oversikt: 3 rader; kolonner: Avdeling, Budsjett, Forbruk, Rest, Sist oppdatert\n"
+        "- Transaksjoner: 250 rader; kolonner: Dato, Leverandør, Beløp (kr), Avdeling\n"
+        "- Tomt: tomt\n"
+        "- Hjelpetall: 1 rader; kolonner: Nøkkel, Verdi"
     )
     assert "## Ark: Oversikt" in result
     assert "## Ark: Tomt" not in result  # tomme ark er bare nevnt i metateksten
@@ -89,7 +92,7 @@ def test_trailing_empty_columns_and_empty_rows_are_dropped(tmp_path):
 
 
 def test_small_rows_per_part(tmp_path, monkeypatch):
-    monkeypatch.setattr(excel, "ROWS_PER_PART", 2)
+    monkeypatch.setattr(tables, "ROWS_PER_PART", 2)
     wb = Workbook()
     for row in [["Tall"], [1], [2], [3]]:
         wb.active.append(row)

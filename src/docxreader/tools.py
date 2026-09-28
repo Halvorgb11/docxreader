@@ -21,7 +21,10 @@ mange nesten like verktøy, og en ny filtype trenger ingen nye verktøy.
 - document_outline – bare innholdsfortegnelsen, med størrelse per seksjon
 - read_section     – én seksjon, valgt med overskriften
 - search_document  – finn setninger, listepunkter og tabellrader som inneholder søkeord
+- query_table      – filtrer, sorter, tell og summer rader i regneark og CSV
 """
+
+from typing import Literal
 
 from langchain_core.tools import tool
 
@@ -34,7 +37,8 @@ from docxreader.blocks import (
     search_units,
     section_end,
 )
-from docxreader.readers import load_document
+from docxreader.readers import load_document, load_table
+from docxreader.tables import query
 
 # Dokumenter (og seksjoner) over dette antallet ord sendes ikke i sin helhet.
 # ~3000 ord er omtrent 4000–5000 tokens.
@@ -42,6 +46,9 @@ MAX_WORDS = 3000
 
 # search_document viser høyst så mange treff.
 MAX_SEARCH_HITS = 15
+
+# query_table viser høyst så mange rader, uansett hva modellen ber om.
+MAX_QUERY_ROWS = 100
 
 
 def _with_meta(meta: str, text: str) -> str:
@@ -54,12 +61,14 @@ def _with_meta(meta: str, text: str) -> str:
 def read_document(path: str) -> str:
     """Les et helt dokument og returner innholdet som markdown.
 
-    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), Markdown (.md) og
+    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), Markdown (.md) og
     tekst (.txt). Overskrifter blir #-overskrifter, lister blir markdown-lister
     og tabeller blir markdown-tabeller. I PowerPoint er hvert lysbilde en
     seksjon ("Lysbilde 3: Tittel"), med talenotater. I Excel er hvert ark en
     seksjon ("Ark: Salg") med radnummer og cellekommentarer; store ark er delt
-    i underseksjoner på 100 rader ("Rad 2–101").
+    i underseksjoner på 100 rader ("Rad 2–101"). En CSV-fil er én tabell ("Tabell").
+    For å filtrere, sortere, telle eller summere rader i Excel/CSV: bruk
+    query_table i stedet for å lese alle radene.
     Er dokumentet stort, returneres innholdsfortegnelsen i stedet; bruk da
     read_section for å lese delene du trenger.
 
@@ -88,7 +97,7 @@ def read_document(path: str) -> str:
 def document_outline(path: str) -> str:
     """Vis innholdsfortegnelsen til et dokument, uten selve teksten.
 
-    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), Markdown (.md) og
+    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), Markdown (.md) og
     tekst (.txt). Viser alle overskrifter (i PowerPoint: lysbilder, i Excel: ark) med
     omtrentlig antall ord og tabeller i hver seksjon. Bruk dette først for å
     finne ut hvor svaret står, og les deretter bare den delen med read_section.
@@ -113,7 +122,7 @@ def read_section(path: str, heading: str) -> str:
     inkludert underoverskrifter. I PowerPoint er en seksjon ett lysbilde,
     i Excel ett ark (eller et utsnitt av rader i et stort ark).
 
-    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), Markdown (.md) og
+    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), Markdown (.md) og
     tekst (.txt). Finn overskriftene med document_outline først. Hvis samme
     overskrift finnes flere steder, oppgi stien med " > ", f.eks. "Økonomi > Status".
 
@@ -148,11 +157,12 @@ def search_document(path: str, query: str) -> str:
     """Søk etter ord i et dokument og få bare de treffende setningene,
     listepunktene og tabellradene, med overskriften de står under.
 
-    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), Markdown (.md) og
+    Støttede filtyper: Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV (.csv), Markdown (.md) og
     tekst (.txt). Alle ordene i søket må finnes i samme setning/rad. Store/små
     bokstaver spiller ingen rolle, og deler av ord gir treff ("sikkerhet"
     finner "sikkerhetshendelser"). Bruk dette når du leter etter noe bestemt
     og ikke vet hvor det står. Les mer sammenheng med read_section.
+    For "største", "summen av", "alle rader der …" i Excel/CSV: bruk query_table.
 
     Args:
         path: Filsti til dokumentet, for eksempel "samples/prosjektplan.docx".
@@ -208,5 +218,63 @@ def search_document(path: str, query: str) -> str:
     return "\n".join(lines)
 
 
+# Argumenttypene blir til skjemaet modellen ser:
+# - list[str] blir en JSON-liste, så modellen kan sende flere betingelser.
+# - Literal[...] blir en "enum": modellen kan bare velge blant disse verdiene.
+# - Argumenter med standardverdi er valgfrie.
+@tool(parse_docstring=True)
+def query_table(
+    path: str,
+    sheet: str = "",
+    where: list[str] | None = None,
+    sort_by: str = "",
+    descending: bool = False,
+    columns: list[str] | None = None,
+    limit: int = 20,
+    group_by: str = "",
+    aggregate: Literal["count", "sum", "avg", "min", "max"] | None = None,
+    value_column: str = "",
+) -> str:
+    """Spør i en tabell i et regneark eller en CSV-fil: filtrer, sorter, tell og
+    summer rader, uten å lese hele tabellen.
+
+    Støttede filtyper: Excel (.xlsx) og CSV (.csv). Bruk dette for spørsmål som
+    "største beløp", "alle rader der Avdeling er IT" eller "sum per avdeling".
+    Første rad i tabellen er kolonnenavnene; document_outline viser ark og
+    kolonner. Svaret har med radnummeret ("Rad") fra filen.
+    Eksempler:
+    where=["Avdeling = IT"], sort_by="Beløp", descending=True, limit=5
+    group_by="Avdeling", aggregate="sum", value_column="Beløp"
+    where=["Dato >= 2026-06-01", "Leverandør ~ AS"], aggregate="count"
+
+    Args:
+        path: Filsti til .xlsx- eller .csv-filen, for eksempel "samples/budsjett.xlsx".
+        sheet: Arknavn i Excel, f.eks. "Transaksjoner". Kan være tomt når filen bare har én tabell (alltid for CSV).
+        where: Betingelser som alle må stemme, på formen "Kolonne operator verdi". Operatorer: = != > < >= <= og ~ (inneholder). Tall sammenlignes som tall, datoer (2026-09-28) og tekst som tekst, uten hensyn til store/små bokstaver.
+        sort_by: Kolonnen det skal sorteres etter.
+        descending: True for synkende sortering (største først).
+        columns: Kolonnene som skal vises. Tom = alle.
+        limit: Maks antall rader i svaret (høyst 100).
+        group_by: Kolonne å gruppere etter; gir én rad per verdi, med aggregate regnet ut per gruppe.
+        aggregate: Regn ut count (antall), sum, avg (snitt), min eller max, totalt eller per group_by. Grupper sorteres med største verdi først.
+        value_column: Kolonnen sum/avg/min/max regnes på.
+    """
+    try:
+        table = load_table(path, sheet)
+        return query(
+            table,
+            where=where or [],
+            sort_by=sort_by,
+            descending=descending,
+            columns=columns or [],
+            limit=max(1, min(limit, MAX_QUERY_ROWS)),
+            group_by=group_by,
+            aggregate=aggregate,
+            value_column=value_column,
+        )
+    except DocumentError as e:
+        return f"Feil: {e}"
+
+
 # Alle verktøyene samlet, så agent.py (og tester) kan hente dem på ett sted.
-ALL_TOOLS = [read_document, document_outline, read_section, search_document]
+ALL_TOOLS = [read_document, document_outline, read_section, search_document, query_table]

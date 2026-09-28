@@ -13,7 +13,7 @@ HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")  # "## Tittel" (og "## Titte
 LIST_ITEM = re.compile(r"^\s*([-*+]|\d+[.)])\s+")  # "- punkt", "* punkt", "1. punkt"
 
 
-def _read_text(path: Path) -> str:
+def read_text(path: Path) -> str:
     """Les filen som tekst. Prøv UTF-8 først, deretter Windows-koding (cp1252),
     som er vanlig i eldre norske filer. "utf-8-sig" tåler også BOM-tegnet
     som enkelte Windows-programmer legger først i filen."""
@@ -76,7 +76,7 @@ def _markdown_chunk_to_block(lines: list[str]) -> Block:
 
 def load_markdown(path: Path) -> tuple[list[Block], str]:
     blocks = []
-    for chunk in _chunks(_read_text(path), split_on_headings=True):
+    for chunk in _chunks(read_text(path), split_on_headings=True):
         blocks.append(_markdown_chunk_to_block(chunk))
     return blocks, ""
 
@@ -85,7 +85,7 @@ def load_plain(path: Path) -> tuple[list[Block], str]:
     """Ren tekst har ingen overskrifter. Hvert avsnitt (adskilt av tom linje)
     blir én blokk. Søk og lesing fungerer; innholdsfortegnelse gir lite."""
     blocks = []
-    for chunk in _chunks(_read_text(path)):
+    for chunk in _chunks(read_text(path)):
         paragraph = " ".join(line.strip() for line in chunk)
         blocks.append(Block(paragraph, count_words(paragraph)))
     return blocks, ""

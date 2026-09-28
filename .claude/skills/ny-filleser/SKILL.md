@@ -62,6 +62,8 @@ Fallgruver vi har truffet:
 
 ## 3. Registrer i menyen
 
+- **Tabellformat?** Lag også `load_tables(path) -> list[Table]` (se `tables.py`, `readers/csvfile.py`), bygg `load()` med `table_blocks()`, legg filendelsen i `TABLE_READERS` og nevn den i docstringen til `query_table`.
+
 - Legg filendelsen(e) i `READERS` i `src/docxreader/readers/__init__.py`.
 - Nevn filendelsen i **"Støttede filtyper"-linjen i docstringen til alle fire verktøy** i `tools.py`.
   Modellen vet bare det som står der. `test_every_supported_file_type_is_mentioned_in_every_tool`

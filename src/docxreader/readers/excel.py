@@ -1,13 +1,13 @@
 """Leser for Excel-arbeidsbøker (.xlsx), med openpyxl.
 
-Hvert ark blir én seksjon ("## Ark: Salg") med innholdet som en markdown-tabell.
+To måter å lese på:
+- load_tables(): hvert ark som en Table (rader og kolonner) – brukes av query_table.
+- load():        blokker for de vanlige verktøyene. Hvert ark blir én seksjon
+                 ("## Ark: Salg") med en markdown-tabell, laget fra load_tables().
+
 Første ikke-tomme rad regnes som overskriftsrad. Hver rad får Excel-radnummeret
 sitt i en egen "Rad"-kolonne, så modellen kan si "rad 57" og brukeren finne den.
-
-Store ark deles i biter på ROWS_PER_PART rader ("### Rad 2–101"). Da virker
-innholdsfortegnelsen og størrelsesgrensen i read_section som for kapitler i Word,
-og modellen kan lese ett utsnitt om gangen. Overskriftsraden gjentas i hver bit.
-
+Store ark deles i biter på tables.ROWS_PER_PART rader ("### Rad 2–101").
 Cellekommentarer tas med under tabellen – der står ofte forklaringen på et tall.
 """
 
@@ -18,10 +18,10 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
-from docxreader.blocks import Block, DocumentError, count_words, heading, table_block
+from docxreader.blocks import Block, DocumentError
+from docxreader.tables import Table, make_table, table_blocks
 
 SHEET_LEVEL = 2  # "## Ark: navn" – samme nivå som lysbilder og Heading 1
-ROWS_PER_PART = 100
 
 
 def _format(value, formula) -> str:
@@ -52,32 +52,8 @@ def _sheet_rows(values_sheet, formulas_sheet) -> list[tuple[int, list[str]]]:
     return [(number, cells[:width]) for number, cells in rows]
 
 
-def _sheet_blocks(name: str, hidden: bool, rows, comments: list[str]) -> list[Block]:
-    title = f"Ark: {name}" + (" (skjult)" if hidden else "")
-    blocks = [heading(SHEET_LEVEL, title)]
-
-    if rows:
-        (_, header), data = rows[0], rows[1:]
-        header_row = ["Rad", *header]
-
-        def table(part):
-            return table_block([header_row, *([str(n), *cells] for n, cells in part)])
-
-        if len(data) <= ROWS_PER_PART:
-            blocks.append(table(data))
-        else:
-            for start in range(0, len(data), ROWS_PER_PART):
-                part = data[start : start + ROWS_PER_PART]
-                blocks.append(heading(SHEET_LEVEL + 1, f"Rad {part[0][0]}–{part[-1][0]}"))
-                blocks.append(table(part))
-
-    if comments:
-        text = "Kommentarer:\n" + "\n".join(f"- {c}" for c in comments)
-        blocks.append(Block(text, count_words(text)))
-    return blocks
-
-
-def load(path: Path) -> tuple[list[Block], str]:
+def load_tables(path: Path) -> list[Table]:
+    """Hvert ark som en Table – også tomme og skjulte ark."""
     try:
         # To utgaver av samme fil: én med lagrede resultater av formler
         # (data_only=True) og én med selve formlene.
@@ -87,23 +63,34 @@ def load(path: Path) -> tuple[list[Block], str]:
         # .xlsx er en zip-fil med XML inni; ødelagt zip eller manglende deler.
         raise DocumentError(f"'{path}' er ikke en gyldig Excel-fil (ødelagt eller feil format).")
 
-    blocks: list[Block] = []
-    summary = []
+    tables = []
     for values_sheet in values_book.worksheets:
         formulas_sheet = formulas_book[values_sheet.title]
-        rows = _sheet_rows(values_sheet, formulas_sheet)
-        hidden = values_sheet.sheet_state != "visible"
         comments = [
             f"{cell.coordinate}: {' '.join(cell.comment.text.split())}"
             for row in formulas_sheet.iter_rows()
             for cell in row
             if cell.comment
         ]
-        if not rows and not comments:
-            summary.append(f"{values_sheet.title} (tomt)")
-            continue
-        summary.append(f"{values_sheet.title} ({max(len(rows) - 1, 0)} rader)")
-        blocks.extend(_sheet_blocks(values_sheet.title, hidden, rows, comments))
+        tables.append(make_table(
+            values_sheet.title,
+            _sheet_rows(values_sheet, formulas_sheet),
+            hidden=values_sheet.sheet_state != "visible",
+            comments=comments,
+        ))
+    return tables
 
-    meta = f"Arbeidsbok med {len(summary)} ark: " + ", ".join(summary) + "."
+
+def load(path: Path) -> tuple[list[Block], str]:
+    blocks: list[Block] = []
+    summary = []  # én linje per ark, med kolonnenavn – nyttig før query_table
+    for table in load_tables(path):
+        if not table.header and not table.comments:
+            summary.append(f"- {table.name}: tomt")
+            continue
+        summary.append(f"- {table.name}: {len(table.rows)} rader; kolonner: {', '.join(table.header)}")
+        title = f"Ark: {table.name}" + (" (skjult)" if table.hidden else "")
+        blocks.extend(table_blocks(table, title, SHEET_LEVEL))
+
+    meta = f"Arbeidsbok med {len(summary)} ark:\n" + "\n".join(summary)
     return blocks, meta
